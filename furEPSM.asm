@@ -7,6 +7,8 @@
 furEPSM_zp = $FC ; 6 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
+; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
+
 ; =========================================================================================
 
 enum furEPSM_zp
@@ -36,11 +38,12 @@ enum furEPSM_bss
 
 		furEPSM_patLo: .dsb furEPSM_allChan
 		furEPSM_patHi: .dsb furEPSM_allChan
-		furEPSM_defaultDelay: .dsb furEPSM_allChan
-		furEPSM_Chandelay: .dsb furEPSM_allChan
+		furEPSM_defaultChanDelay: .dsb furEPSM_allChan
+		furEPSM_ChanDelay: .dsb furEPSM_allChan
 
 		furEPSM_baseNote: .dsb furEPSM_effChan ; $00 = kill channel and set to $80, $01 = release, $02-$7F = note, $80 = nothing
 		furEPSM_instrument: .dsb furEPSM_effChan ; bit 7 = instrument changed flag
+		furEPSM_vol: .dsb furEPSM_effChan ; bit 7 = volume changed flag
 
 		furEPSM_ssgVolEnvPtrLo: .dsb furEPSM_ssgChan
 		furEPSM_ssgVolEnvPtrHi: .dsb furEPSM_ssgChan
@@ -89,9 +92,9 @@ furEPSM_play:
 		LDX #furEPSM_allChan-1
 @clear1:
 		LDA #-1
-		STA furEPSM_defaultDelay,X
+		STA furEPSM_defaultChanDelay,X
 		LDA #1
-		STA furEPSM_Chandelay,X
+		STA furEPSM_ChanDelay,X
 		DEX
 		BPL @clear1
 		
@@ -125,12 +128,33 @@ furEPSM_update:
 @is_play:
 		LDA furEPSM_delayTick
 		BNE @no_seq_update
-		LDA $7F ; test
-		EOR #$40
-		STA $7F
-		STA $4011
+		
+		LDX #furEPSM_allChan-1
+@seq_loop:
+		DEC furEPSM_ChanDelay,X
+		BNE @skip_seq
+		LDA furEPSM_defaultChanDelay,X
+		STA furEPSM_ChanDelay,X
+		JSR furEPSM_update_seq
+@skip_seq:
+		DEX
+		BPL @seq_loop
+		
+		INC furEPSM_currRow
+		LDA furEPSM_currRow
+		CMP furEPSM_rows
+		BNE @no_next_frame
+		INC furEPSM_currFrame
+		LDA furEPSM_currFrame
+		CMP furEPSM_frames
+		BNE @no_frame_wrap
+		LDA #0
+@no_frame_wrap:
+		JSR furEPSM_loadFrame
+@no_next_frame:
 		JSR furEPSM_getSpeed
 		INC furEPSM_delayTick
+
 @no_seq_update:
 		DEC furEPSM_delayTick
 		RTS
@@ -216,6 +240,91 @@ furEPSM_getSpeed:
 		STA furEPSM_delayTick
 		INC furEPSM_groovePos
 		RTS
+		
+; =========================================================================================
+;
+; **COMMAND INTERPRITTER**
+;
+; =========================================================================================
+		
+furEPSM_update_seq:
+		LDA furEPSM_patLo,X
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_patHi,X
+		STA furEPSM_temp_ptr+1
+
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		CMP #$80 ; INY ate negative flag :(
+		BCS @effectloop
+@notes:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_baseNote,X
+		
+		LDA (furEPSM_temp_ptr),Y ; Check if next command is a note (stop reading) or a command (continue reading)
+		BPL @sequpdatedone
+@effectloop:
+		CMP #$C0
+		BCS @delay
+		INY
+
+		PHA
+		AND #$1F
+		ASL
+		STY furEPSM_temp0
+		TAY
+		LDA @commandtbl+0,Y
+		STA furEPSM_temp_ptr2+0
+		LDA @commandtbl+1,Y
+		STA furEPSM_temp_ptr2+1
+		LDY furEPSM_temp0
+		JMP (furEPSM_temp_ptr2)
+@effret:
+		PLA
+		CMP #$A0
+		BCS @sequpdatedone
+		BCC @effectloop ; always
+		
+@delay:
+		INY
+		AND #$3F
+		ADC #1-1 ; carry is set
+		STA furEPSM_defaultChanDelay,x
+@sequpdatedone:
+		TYA
+		CLC
+		ADC furEPSM_temp_ptr+0
+		STA furEPSM_patLo,X
+		LDA furEPSM_patHi
+		ADC #0
+		STA furEPSM_patHi
+		RTS
+		
+@commandtbl:
+		.WORD @eff_inst 			; $80
+		.WORD @eff_vol 				; $81
+		.WORD @eff_vibrato			; $82
+		
+@eff_inst:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		ORA #$80
+		STA furEPSM_instrument,X
+		JMP @effret
+		
+@eff_vol:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		ORA #$80
+		STA furEPSM_vol,X
+		JMP @effret
+	
+@eff_vibrato:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		; TODO
+		JMP @effret
 
 ; =========================================================================================
 

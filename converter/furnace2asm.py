@@ -77,8 +77,27 @@ def to_byte_str(byte_list):
     if not byte_list: return ""
     return ".BYTE " + ", ".join(f"${b:02X}" for b in byte_list)
 
-def generate_channel_data(cells_for_all_rows):
+def generate_channel_data(cells_for_all_rows, is_rhythm=False):
     N = len(cells_for_all_rows)
+    
+    # --- 추가된 부분: 패턴 내 악기 중복 제거 전처리 (리듬 채널 제외) ---
+    if not is_rhythm:
+        current_inst = -1
+        for i in range(N):
+            note, fx_list = cells_for_all_rows[i]
+            new_fx = []
+            for fx in fx_list:
+                if fx[0] == 'INST':
+                    # 이전 악기와 다를 때만 리스트에 남기고 변수 업데이트
+                    if fx[1] != current_inst:
+                        new_fx.append(fx)
+                        current_inst = fx[1]
+                else:
+                    new_fx.append(fx)
+            # 튜플 교체 (중복 제거된 이펙트 리스트로 업데이트)
+            cells_for_all_rows[i] = (note, new_fx)
+    # -------------------------------------------------------------
+
     bytes_out = []
     current_length = -1
     
@@ -303,14 +322,14 @@ def convert_furnace(input_path):
                 for ch in range(6):
                     f.write(f"@fm{ch+1}pat{pat_id}:\n")
                     ch_cells = [parse_cell(r[ch]) for r in rows]
-                    b_out = generate_channel_data(ch_cells)
+                    b_out = generate_channel_data(ch_cells, is_rhythm=False)
                     f.write("    " + to_byte_str(b_out) + "\n")
                 
                 # SSG 1~3 (6~8)
                 for ch in range(3):
                     f.write(f"@ssg{ch+1}pat{pat_id}:\n")
                     ch_cells = [parse_cell(r[6+ch]) for r in rows]
-                    b_out = generate_channel_data(ch_cells)
+                    b_out = generate_channel_data(ch_cells, is_rhythm=False)
                     f.write("    " + to_byte_str(b_out) + "\n")
                 
                 # 리듬 (9~14 합치기)
@@ -330,7 +349,7 @@ def convert_furnace(input_path):
                     r_note = bitmask if bitmask > 0 else None
                     rhythm_cells.append((r_note, combined_fx))
                     
-                b_out = generate_channel_data(rhythm_cells)
+                b_out = generate_channel_data(rhythm_cells, is_rhythm=True)
                 f.write("    " + to_byte_str(b_out) + "\n\n")
 
         print(f"Generated {song_filename}")
