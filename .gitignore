@@ -1,0 +1,6 @@
+*.txt
+*.exe
+test*
+ignore
+driver_test.asm
+*.nes
