@@ -4,3 +4,4 @@ test*
 ignore
 driver_test.asm
 *.nes
+build.bat
