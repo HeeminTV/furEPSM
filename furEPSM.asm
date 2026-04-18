@@ -22,7 +22,6 @@ furEPSM_fmChan = 6
 furEPSM_ssgChan = 3
 furEPSM_rhythmChan = 1
 
-furEPSM_effChan = furEPSM_fmChan+furEPSM_ssgChan
 furEPSM_allChan = furEPSM_fmChan+furEPSM_ssgChan+furEPSM_rhythmChan
 
 enum furEPSM_bss
@@ -36,18 +35,18 @@ enum furEPSM_bss
 		furEPSM_delayTick: .dsb 1
 		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing
 
-		furEPSM_patLo: .dsb furEPSM_allChan
-		furEPSM_patHi: .dsb furEPSM_allChan
-		furEPSM_defaultChanDelay: .dsb furEPSM_allChan
-		furEPSM_ChanDelay: .dsb furEPSM_allChan
+		furEPSM_chanPatLo: .dsb furEPSM_allChan
+		furEPSM_chanPatHi: .dsb furEPSM_allChan
+		furEPSM_chanDefaultDelay: .dsb furEPSM_allChan
+		furEPSM_chanDelay: .dsb furEPSM_allChan
+		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00 = kill channel and set to $80, $01 = release, $02-$7F = note, $80 = nothing
 
-		furEPSM_baseNote: .dsb furEPSM_effChan ; $00 = kill channel and set to $80, $01 = release, $02-$7F = note, $80 = nothing
-		furEPSM_instrument: .dsb furEPSM_effChan ; bit 7 = instrument changed flag
-		furEPSM_vol: .dsb furEPSM_effChan ; bit 7 = volume changed flag
+		furEPSM_fChanInst: .dsb furEPSM_fmChan ; bit 7 = instrument changed flag
+		furEPSM_fChanVol: .dsb furEPSM_fmChan ; bit 7 = volume changed flag
 
-		furEPSM_ssgVolEnvPtrLo: .dsb furEPSM_ssgChan
-		furEPSM_ssgVolEnvPtrHi: .dsb furEPSM_ssgChan
-		furEPSM_ssgVolEnvPos: .dsb furEPSM_ssgChan
+		furEPSM_sChanVolEnvPtrLoLo: .dsb furEPSM_ssgChan
+		furEPSM_sChanVolEnvPtrLoHi: .dsb furEPSM_ssgChan
+		furEPSM_sChanVolEnvPos: .dsb furEPSM_ssgChan
 ende
 
 ; =========================================================================================
@@ -74,7 +73,6 @@ furEPSM_play:
 		JSR furEPSM_silenceChannels
 
 		LDY #0
-		STY furEPSM_groovePos
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA furEPSM_framesPtr+0
@@ -89,28 +87,27 @@ furEPSM_play:
 		LDA (furEPSM_temp_ptr),Y
 		STA furEPSM_rows
 		
+		LDA #$80
+		STA furEPSM_songFlag
 		LDX #furEPSM_allChan-1
 @clear1:
-		LDA #-1
-		STA furEPSM_defaultChanDelay,X
-		LDA #1
-		STA furEPSM_ChanDelay,X
+		STA furEPSM_chanBaseNote,X
 		DEX
 		BPL @clear1
 		
-		LDX #furEPSM_effChan-1
+		LDX #furEPSM_fmChan-1
 @clear2:
 		LDA #0
-		STA furEPSM_instrument,X
-		LDA #$80
-		STA furEPSM_baseNote,X
+		STA furEPSM_fChanInst,X
+		LDA #$7F
+		STA furEPSM_fChanVol,X
 		DEX
 		BPL @clear2
 		
-		STA furEPSM_songFlag
-		
-		JSR furEPSM_getSpeed
+		; JSR furEPSM_updateSpeed
 		LDA #0
+		STA furEPSM_groovePos
+		STA furEPSM_delayTick
 		JMP furEPSM_loadFrame
 
 ; =========================================================================================
@@ -129,13 +126,13 @@ furEPSM_update:
 		LDA furEPSM_delayTick
 		BNE @no_seq_update
 		
-		LDX #furEPSM_allChan-1
+		LDX #furEPSM_allChan-furEPSM_rhythmChan-1
 @seq_loop:
-		DEC furEPSM_ChanDelay,X
+		DEC furEPSM_chanDelay,X
 		BNE @skip_seq
-		LDA furEPSM_defaultChanDelay,X
-		STA furEPSM_ChanDelay,X
-		JSR furEPSM_update_seq
+		LDA furEPSM_chanDefaultDelay,X
+		STA furEPSM_chanDelay,X
+		JSR furEPSM_updateSeq
 @skip_seq:
 		DEX
 		BPL @seq_loop
@@ -152,7 +149,7 @@ furEPSM_update:
 @no_frame_wrap:
 		JSR furEPSM_loadFrame
 @no_next_frame:
-		JSR furEPSM_getSpeed
+		JSR furEPSM_updateSpeed
 		INC furEPSM_delayTick
 
 @no_seq_update:
@@ -199,29 +196,47 @@ furEPSM_loadFrame:
 		STA furEPSM_currFrame
 		ASL
 		TAY
+
 		LDA furEPSM_framesPtr+0
 		STA furEPSM_temp_ptr+0
 		LDA furEPSM_framesPtr+1
 		STA furEPSM_temp_ptr+1
-		
-		LDA #0
-		STA furEPSM_currRow
-		LDX #0
-@loop:
+
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		STA furEPSM_patLo,X
+		PHA
+		LDA (furEPSM_temp_ptr),Y
+		STA furEPSM_temp_ptr+1
+		PLA
+		STA furEPSM_temp_ptr+0
+
+		LDX #0 
+		STX furEPSM_currRow
+		LDY #0
+@loop1:
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		STA furEPSM_patHi,X
+		STA furEPSM_chanPatLo,X
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_chanPatHi,X
 		INX
 		CPX #furEPSM_allChan
-		BNE @loop
+		BNE @loop1
+		
+		; LDX #furEPSM_allChan-1
+@loop2:
+		LDA #-1
+		STA furEPSM_chanDefaultDelay-1,X
+		LDA #1
+		STA furEPSM_chanDelay-1,X
+		DEX
+		BNE @loop2
 		RTS
 		
 ; =========================================================================================
 
-furEPSM_getSpeed:
+furEPSM_updateSpeed:
 		LDA furEPSM_groovePtr+0
 		STA furEPSM_temp_ptr+0
 		LDA furEPSM_groovePtr+1
@@ -247,27 +262,27 @@ furEPSM_getSpeed:
 ;
 ; =========================================================================================
 		
-furEPSM_update_seq:
-		LDA furEPSM_patLo,X
+furEPSM_updateSeq:
+		LDA furEPSM_chanPatLo,X
 		STA furEPSM_temp_ptr+0
-		LDA furEPSM_patHi,X
+		LDA furEPSM_chanPatHi,X
 		STA furEPSM_temp_ptr+1
+		
+		LDY #0
 
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		CMP #$80 ; INY ate negative flag :(
 		BCS @effectloop
 @notes:
-		LDA (furEPSM_temp_ptr),Y
-		INY
-		STA furEPSM_baseNote,X
+		STA furEPSM_chanBaseNote,X
 		
 		LDA (furEPSM_temp_ptr),Y ; Check if next command is a note (stop reading) or a command (continue reading)
 		BPL @sequpdatedone
+		INY
 @effectloop:
 		CMP #$C0
 		BCS @delay
-		INY
 
 		PHA
 		AND #$1F
@@ -284,22 +299,29 @@ furEPSM_update_seq:
 		PLA
 		CMP #$A0
 		BCS @sequpdatedone
+		LDA (furEPSM_temp_ptr),Y
+		INY
 		BCC @effectloop ; always
 		
 @delay:
-		INY
+		CMP #$FF ; no single note / effects in this frame
+		BEQ @framelock
 		AND #$3F
-		ADC #1-1 ; carry is set
-		STA furEPSM_defaultChanDelay,x
+		ADC #1 ; carry is clear
+@framelock:
+		STA furEPSM_chanDelay,X
+		STA furEPSM_chanDefaultDelay,x
 @sequpdatedone:
 		TYA
 		CLC
 		ADC furEPSM_temp_ptr+0
-		STA furEPSM_patLo,X
-		LDA furEPSM_patHi
+		STA furEPSM_chanPatLo,X
+		LDA furEPSM_chanPatHi
 		ADC #0
-		STA furEPSM_patHi
+		STA furEPSM_chanPatHi
 		RTS
+		
+; =========================================================================================
 		
 @commandtbl:
 		.WORD @eff_inst 			; $80
@@ -310,14 +332,14 @@ furEPSM_update_seq:
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		ORA #$80
-		STA furEPSM_instrument,X
+		STA furEPSM_fChanInst,X
 		JMP @effret
 		
 @eff_vol:
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		ORA #$80
-		STA furEPSM_vol,X
+		STA furEPSM_fChanVol,X
 		JMP @effret
 	
 @eff_vibrato:

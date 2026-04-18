@@ -11,8 +11,6 @@ def parse_note(s):
     n = s[:2]
     try:
         octave = int(s[2])
-        # A-0 is index 9 of octave 0 in typical mapping? 
-        # C-0=0, A-0=9. -> 9 - 9 + 2 = 2.
         val = octave * 12 + notes[n] - 9 + 2
         return max(0x02, min(0x7F, val))
     except:
@@ -35,7 +33,7 @@ def parse_cell(cell_str):
             etype = fx[:2]
             eval_ = int(fx[2:], 16)
             if etype == '04': fx_list.append(('FX_82', eval_))
-            # 추가할 이펙트가 있으면 여기에 계속 추가하시면 됩니다.
+            # 추가할 이펙트가 있으면 여기에 계속 추가
             
     return note, fx_list
 
@@ -68,9 +66,6 @@ def emit_row(note, fx_list):
             for i, f in enumerate(norm_fx):
                 is_last = (i == len(norm_fx) - 1)
                 out.extend(encode_fx(f, is_last=is_last))
-        else:
-            # 이펙트가 하나도 없으면 note만 기록됨 (드라이버가 암시적으로 처리)
-            pass
     return out
 
 def to_byte_str(byte_list):
@@ -80,7 +75,7 @@ def to_byte_str(byte_list):
 def generate_channel_data(cells_for_all_rows, is_rhythm=False):
     N = len(cells_for_all_rows)
     
-    # --- 추가된 부분: 패턴 내 악기 중복 제거 전처리 (리듬 채널 제외) ---
+    # 악기 중복 제거 전처리 (리듬 채널 제외)
     if not is_rhythm:
         current_inst = -1
         for i in range(N):
@@ -88,27 +83,22 @@ def generate_channel_data(cells_for_all_rows, is_rhythm=False):
             new_fx = []
             for fx in fx_list:
                 if fx[0] == 'INST':
-                    # 이전 악기와 다를 때만 리스트에 남기고 변수 업데이트
                     if fx[1] != current_inst:
                         new_fx.append(fx)
                         current_inst = fx[1]
                 else:
                     new_fx.append(fx)
-            # 튜플 교체 (중복 제거된 이펙트 리스트로 업데이트)
             cells_for_all_rows[i] = (note, new_fx)
-    # -------------------------------------------------------------
 
     bytes_out = []
     current_length = -1
     
     i = 0
     while i < N:
-        # 1. 다음으로 데이터가 있는 ROW 찾기
         next_ne = i
         while next_ne < N and is_cell_empty(*cells_for_all_rows[next_ne]):
             next_ne += 1
             
-        # 2. 빈 공간 (Gap)이 있다면 Length 커맨드로 대기
         gap = next_ne - i
         while gap > 0:
             chunk = min(gap, 64)
@@ -124,14 +114,12 @@ def generate_channel_data(cells_for_all_rows, is_rhythm=False):
             
         note, fx_list = cells_for_all_rows[next_ne]
         
-        # 3. 현재 유효한 ROW 이후로 다음 유효 ROW까지의 거리(Distance) 계산
         dist = 1
         for j in range(next_ne + 1, N):
             if not is_cell_empty(*cells_for_all_rows[j]):
                 break
             dist += 1
             
-        # 4. 거리가 64를 넘어가면 쪼개서 Length 커맨드 삽입
         while dist > 64:
             if 64 != current_length:
                 fx_list.append(('LEN', 64))
@@ -148,6 +136,11 @@ def generate_channel_data(cells_for_all_rows, is_rhythm=False):
             
         bytes_out.extend(emit_row(note, fx_list))
         i = next_ne + dist
+    
+    # --- 핵심 수정: 패턴의 마지막 바이트가 처리 종료자($A0 이상)가 아닐 때만 $FF 삽입 ---
+    # (빈 배열이거나, 마지막 바이트가 $A0 미만인 경우 = 종료자가 없음)
+    if not bytes_out or bytes_out[-1] < 0xA0:
+        bytes_out.append(0xFF)
         
     return bytes_out
 
@@ -162,16 +155,13 @@ def convert_furnace(input_path):
     
     idx = 0
     
-    # ---------------------------------------------------------
     # PHASE 1: 헤더 및 악기 파싱
-    # ---------------------------------------------------------
     while idx < len(lines):
         line = lines[idx].strip()
         if '# Subsongs' in line:
             break
         
         if '- type: 1' in line:
-            # FM 악기
             alg = fb = fms = ams = 0
             ops = [{} for _ in range(4)]
             while idx < len(lines):
@@ -208,7 +198,6 @@ def convert_furnace(input_path):
             instruments.append({'type': 1, 'data': inst_bytes})
             
         elif '- type: 6' in line:
-            # SSG 악기
             vol_macro = [15, 0xFF]
             while idx < len(lines):
                 idx += 1
@@ -227,9 +216,7 @@ def convert_furnace(input_path):
             instruments.append({'type': 6, 'data': vol_macro})
         idx += 1
 
-    # ---------------------------------------------------------
     # PHASE 2: 곡 및 패턴 파싱
-    # ---------------------------------------------------------
     current_song = None
     while idx < len(lines):
         line = lines[idx].strip()
@@ -263,9 +250,7 @@ def convert_furnace(input_path):
             current_song['patterns'][order_id] = rows
         idx += 1
 
-    # ---------------------------------------------------------
     # PHASE 3: 헤더 .asm 파일 쓰기
-    # ---------------------------------------------------------
     header_filename = f"{base_name}_header.asm"
     with open(header_filename, 'w') as f:
         f.write("furEPSM_header:\n")
@@ -280,19 +265,15 @@ def convert_furnace(input_path):
         for i, inst in enumerate(instruments):
             f.write(f"furEPSM_inst{i:02X}:\n")
             if inst['type'] == 1:
-                # FM
                 f.write("    " + to_byte_str([inst['data'][0], inst['data'][1]]) + "\n")
                 for op in inst['data'][2:]:
                     f.write("    " + to_byte_str(op) + "\n")
             elif inst['type'] == 6:
-                # SSG
                 f.write("    " + to_byte_str(inst['data']) + "\n")
             f.write("\n")
     print(f"Generated {header_filename}")
 
-    # ---------------------------------------------------------
     # PHASE 4: 곡별 .asm 파일 쓰기
-    # ---------------------------------------------------------
     for i, song in enumerate(songs):
         song_filename = f"{base_name}_song{i:02d}.asm"
         with open(song_filename, 'w') as f:
@@ -313,26 +294,22 @@ def convert_furnace(input_path):
                 ptr_strs = []
                 for ch in range(6): ptr_strs.append(f"@fm{ch+1}pat{order[ch]}")
                 for ch in range(3): ptr_strs.append(f"@ssg{ch+1}pat{order[6+ch]}")
-                ptr_strs.append(f"@rhythmpat{order[9]}") # KICK 채널의 ID 사용
+                ptr_strs.append(f"@rhythmpat{order[9]}")
                 f.write("    .WORD " + ", ".join(ptr_strs) + "\n\n")
                 
-            # 패턴 데이터 생성
             for pat_id, rows in song['patterns'].items():
-                # FM 1~6 (0~5)
                 for ch in range(6):
                     f.write(f"@fm{ch+1}pat{pat_id}:\n")
                     ch_cells = [parse_cell(r[ch]) for r in rows]
                     b_out = generate_channel_data(ch_cells, is_rhythm=False)
                     f.write("    " + to_byte_str(b_out) + "\n")
                 
-                # SSG 1~3 (6~8)
                 for ch in range(3):
                     f.write(f"@ssg{ch+1}pat{pat_id}:\n")
                     ch_cells = [parse_cell(r[6+ch]) for r in rows]
                     b_out = generate_channel_data(ch_cells, is_rhythm=False)
                     f.write("    " + to_byte_str(b_out) + "\n")
                 
-                # 리듬 (9~14 합치기)
                 f.write(f"@rhythmpat{pat_id}:\n")
                 rhythm_cells = []
                 for r in rows:

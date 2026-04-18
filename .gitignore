@@ -5,3 +5,5 @@ ignore
 driver_test.asm
 *.nes
 build.bat
+converter/furnace2asm_fixattempt1.py
+*.mlb
