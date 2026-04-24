@@ -8,6 +8,7 @@ furEPSM_zp = $FC ; 6 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
 ; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
+; (You may want to call `furEPSM_silenceChannels` at RESET as initialization process but it's optional)	
 
 ; =========================================================================================
 
@@ -103,11 +104,10 @@ furEPSM_play:
 		DEX
 		BPL @clear1
 		
+		LDA #$7F
 		LDX #furEPSM_fmChan-1
 @clear2:
-		LDA #0
 		STA furEPSM_fChanInst,X
-		LDA #$7F
 		STA furEPSM_fChanVol,X
 		DEX
 		BPL @clear2
@@ -122,7 +122,7 @@ furEPSM_play:
 ;
 ; - furEPSM_update: Update sequences, EPSM registers
 ;     input:
-;     output: X=0
+;     output: X=$FF
 ;
 ; =========================================================================================
 
@@ -164,6 +164,12 @@ furEPSM_update:
 		; JSR furEPSM_updateRegSSG
 		RTS
 
+; =========================================================================================
+;
+; - furEPSM_silenceChannels: Silence all EPSM CHANNELS
+;     input:
+;     output:
+;
 ; =========================================================================================
 
 furEPSM_silenceChannels:
@@ -328,6 +334,12 @@ furEPSM_updateSeq:
 		ADC #0
 		STA furEPSM_chanPatHi
 		RTS
+	
+; =========================================================================================
+;
+; **EFFECTS**
+;
+; =========================================================================================
 		
 @commandtbl:
 		.WORD @eff_inst 			; $80
@@ -337,7 +349,10 @@ furEPSM_updateSeq:
 @eff_inst:
 		LDA (furEPSM_temp_ptr),Y
 		INY
+		CMP furEPSM_fChanInst,X
+		BEQ @skipsetflag
 		ORA #$80
+@skipsetflag:
 		STA furEPSM_fChanInst,X
 		JMP @effret
 		
@@ -372,7 +387,7 @@ furEPSM_updatePitch:
 		DEX
 		BPL @getbasefreq
 		
-		LDX #furEPSM_fmChan-1
+		LDX #furEPSM_allChan-1
 @applyfreq:
 		LDA furEPSM_fChanBaseFLo,X
 		STA furEPSM_fChanFLo,X
@@ -385,7 +400,7 @@ furEPSM_updatePitch:
 		RTS
 
 furEPSM_getBaseFNum: ; A = note
-		STY furEPSM_temp1
+		STY furEPSM_temp1 ; save Y
 
 		SEC
 		SBC #2
@@ -398,6 +413,7 @@ furEPSM_getBaseFNum: ; A = note
 		BCC @ret
 		SBC #12
 		INC furEPSM_temp0
+		BNE @getmod ; always
 @ret:
 		ASL
 		TAY
@@ -406,7 +422,7 @@ furEPSM_getBaseFNum: ; A = note
 		LDA furEPSM_fnumTable+1,Y
 		STA furEPSM_temp_ptr2+1
 		
-		LDY furEPSM_temp1
+		LDY furEPSM_temp1 ; restore Y
 		RTS
 
 ; =========================================================================================
@@ -458,7 +474,7 @@ furEPSM_updateRegFM:
 		RTS
 
 @chanregoffsettbl:
-		.BYTE 2, 2, 2, 0, 0, 0
+		.BYTE 0, 0, 0, 2, 2, 2
 		
 @keyOnRegTbl:
 		.BYTE $00, $01, $02, $04, $05, $06
@@ -553,6 +569,8 @@ MACRO furEPSM_loadEPSM regoffset
 		CMP #16
 		BNE @oploop
 		PLA
+		TAX
+		PLA
 		TAY
 		RTS
 ENDM
@@ -568,35 +586,37 @@ furEPSM_uploadFMPatch:
 		LDA furEPSM_instptr+1,Y
 		STA furEPSM_temp_ptr+1
 
+		TXA
+		PHA
 		CPX #3
-		; BNE @secondbank
-		BEQ @firstbank
+		BCC @firstbank
 		JMP @secondbank
 @firstbank:
 		furEPSM_loadEPSM 0
 @secondbank:
+		AXS #3 ; cap the X range to 0-2
 		furEPSM_loadEPSM +2
 		
 furEPSM_B0RegTbl:
-		.BYTE $B0, $B1, $B2, $B0, $B1, $B2
+		.BYTE $B0, $B1, $B2
 		
 furEPSM_B4RegTbl:
-		.BYTE $B4, $B5, $B6, $B4, $B5, $B6
+		.BYTE $B4, $B5, $B6
 
 furEPSM_30RegTbl:
-		.BYTE $30, $31, $32, $30, $31, $32
+		.BYTE $30, $31, $32
 furEPSM_40RegTbl:
-		.BYTE $40, $41, $42, $40, $41, $42
+		.BYTE $40, $41, $42
 furEPSM_50RegTbl:
-		.BYTE $50, $51, $52, $50, $51, $52
+		.BYTE $50, $51, $52
 furEPSM_60RegTbl:
-		.BYTE $60, $61, $62, $60, $61, $62
+		.BYTE $60, $61, $62
 furEPSM_70RegTbl:
-		.BYTE $70, $71, $72, $70, $71, $72
+		.BYTE $70, $71, $72
 furEPSM_80RegTbl:
-		.BYTE $80, $81, $82, $80, $81, $82
+		.BYTE $80, $81, $82
 furEPSM_90RegTbl:
-		.BYTE $90, $91, $92, $90, $91, $92
+		.BYTE $90, $91, $92
 		
 ; =========================================================================================
 
