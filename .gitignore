@@ -7,5 +7,6 @@ driver_test.asm
 build.bat
 converter/furnace2asm_fixattempt1.py
 *.mlb
+*.lua
 
 !LICENCE.txt

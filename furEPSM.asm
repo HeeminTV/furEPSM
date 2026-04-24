@@ -4,7 +4,7 @@
 ;
 ; =========================================================================================
 
-furEPSM_zp = $FC ; 6 bytes zero page variable
+furEPSM_zp = $FA ; 6 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
 ; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
@@ -376,6 +376,8 @@ furEPSM_updatePitch:
 @getbasefreq:
 		LDA furEPSM_chanBaseNote,X
 		BEQ @noteoff
+		SEC
+		SBC #2
 		JSR furEPSM_getBaseFNum
 		LDA furEPSM_temp_ptr2+0
 		STA furEPSM_fChanBaseFLo,X
@@ -402,8 +404,8 @@ furEPSM_updatePitch:
 furEPSM_getBaseFNum: ; A = note
 		STY furEPSM_temp1 ; save Y
 
-		SEC
-		SBC #2
+		; SEC
+		; SBC #2
 		TAY
 		LDA #0
 		STA furEPSM_temp0
