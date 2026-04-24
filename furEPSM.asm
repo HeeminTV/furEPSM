@@ -39,10 +39,16 @@ enum furEPSM_bss
 		furEPSM_chanPatHi: .dsb furEPSM_allChan
 		furEPSM_chanDefaultDelay: .dsb furEPSM_allChan
 		furEPSM_chanDelay: .dsb furEPSM_allChan
-		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00 = kill channel and set to $80, $01 = release, $02-$7F = note, $80 = nothing
+		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00 = kill the channel, $01 = release (does nothing in FM), $02-$7F = note
 
 		furEPSM_fChanInst: .dsb furEPSM_fmChan ; bit 7 = instrument changed flag
 		furEPSM_fChanVol: .dsb furEPSM_fmChan ; bit 7 = volume changed flag
+		furEPSM_fChanBaseFLo: .dsb furEPSM_fmChan ; base note freq
+		furEPSM_fChanBaseFHi: .dsb furEPSM_fmChan
+		furEPSM_fChanBaseOct: .dsb furEPSM_fmChan
+		furEPSM_fChanFLo: .dsb furEPSM_fmChan ; final register out
+		furEPSM_fChanFHi: .dsb furEPSM_fmChan
+		furEPSM_fChanOct: .dsb furEPSM_fmChan
 
 		furEPSM_sChanVolEnvPtrLoLo: .dsb furEPSM_ssgChan
 		furEPSM_sChanVolEnvPtrLoHi: .dsb furEPSM_ssgChan
@@ -89,6 +95,8 @@ furEPSM_play:
 		
 		LDA #$80
 		STA furEPSM_songFlag
+		
+		LDA #0 ; note off
 		LDX #furEPSM_allChan-1
 @clear1:
 		STA furEPSM_chanBaseNote,X
@@ -103,11 +111,11 @@ furEPSM_play:
 		STA furEPSM_fChanVol,X
 		DEX
 		BPL @clear2
-		
-		; JSR furEPSM_updateSpeed
+
+		LDA #1
+		STA furEPSM_delayTick
 		LDA #0
 		STA furEPSM_groovePos
-		STA furEPSM_delayTick
 		JMP furEPSM_loadFrame
 
 ; =========================================================================================
@@ -123,7 +131,7 @@ furEPSM_update:
 		BMI @is_play
 		RTS
 @is_play:
-		LDA furEPSM_delayTick
+		DEC furEPSM_delayTick
 		BNE @no_seq_update
 		
 		LDX #furEPSM_allChan-furEPSM_rhythmChan-1
@@ -150,10 +158,10 @@ furEPSM_update:
 		JSR furEPSM_loadFrame
 @no_next_frame:
 		JSR furEPSM_updateSpeed
-		INC furEPSM_delayTick
-
 @no_seq_update:
-		DEC furEPSM_delayTick
+		JSR furEPSM_updatePitch
+		JSR furEPSM_updateRegFM
+		; JSR furEPSM_updateRegSSG
 		RTS
 
 ; =========================================================================================
@@ -321,8 +329,6 @@ furEPSM_updateSeq:
 		STA furEPSM_chanPatHi
 		RTS
 		
-; =========================================================================================
-		
 @commandtbl:
 		.WORD @eff_inst 			; $80
 		.WORD @eff_vol 				; $81
@@ -347,7 +353,251 @@ furEPSM_updateSeq:
 		INY
 		; TODO
 		JMP @effret
+		
+; =========================================================================================
 
+furEPSM_updatePitch:
+		LDX #furEPSM_fmChan-1
+@getbasefreq:
+		LDA furEPSM_chanBaseNote,X
+		BEQ @noteoff
+		JSR furEPSM_getBaseFNum
+		LDA furEPSM_temp_ptr2+0
+		STA furEPSM_fChanBaseFLo,X
+		LDA furEPSM_temp_ptr2+1
+		STA furEPSM_fChanBaseFHi,X
+		LDA furEPSM_temp0
+		STA furEPSM_fChanBaseOct,X
+@noteoff:
+		DEX
+		BPL @getbasefreq
+		
+		LDX #furEPSM_fmChan-1
+@applyfreq:
+		LDA furEPSM_fChanBaseFLo,X
+		STA furEPSM_fChanFLo,X
+		LDA furEPSM_fChanBaseFHi,X
+		STA furEPSM_fChanFHi,X
+		LDA furEPSM_fChanBaseOct,X
+		STA furEPSM_fChanOct,X
+		DEX
+		BPL @applyfreq
+		RTS
+
+furEPSM_getBaseFNum: ; A = note
+		STY furEPSM_temp1
+
+		SEC
+		SBC #2
+		TAY
+		LDA #0
+		STA furEPSM_temp0
+		TYA
+@getmod:
+		CMP #12
+		BCC @ret
+		SBC #12
+		INC furEPSM_temp0
+@ret:
+		ASL
+		TAY
+		LDA furEPSM_fnumTable+0,Y
+		STA furEPSM_temp_ptr2+0
+		LDA furEPSM_fnumTable+1,Y
+		STA furEPSM_temp_ptr2+1
+		
+		LDY furEPSM_temp1
+		RTS
+
+; =========================================================================================
+
+furEPSM_updateRegFM:
+		LDX #furEPSM_fmChan
+@loop:
+		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
+
+		LDA #$28
+		STA $401C
+
+		LDA furEPSM_chanBaseNote,X
+		BNE @not_noteoff ; $00 = note cut
+; Note off
+		LDA @keyOnRegTbl,X
+		STA $401D
+		BPL @dont_enable_key ; always
+@not_noteoff:
+		; TODO : release notes?
+		LDA @keyOnRegTbl,X
+		ORA #$F0
+		STA $401D
+@dont_enable_key:
+		LDA furEPSM_fChanInst,X
+		BPL @noinstchange
+		AND #$7F
+		STA furEPSM_fChanInst,X
+		JSR furEPSM_uploadFMPatch
+@noinstchange:
+		LDA @A0RegTbl,X
+		STA $401C,Y
+		LDA furEPSM_fChanFLo,X
+		STA $401D,Y
+		
+		LDA @A4RegTbl,X
+		STA $401C,Y
+		LDA furEPSM_fChanOct,X
+		ASL
+		ASL
+		ASL
+		STA furEPSM_temp0
+		LDA furEPSM_fChanFHi,X
+		ORA furEPSM_temp0
+		STA $401D,Y
+		
+		DEX
+		BPL @loop
+		RTS
+
+@chanregoffsettbl:
+		.BYTE 2, 2, 2, 0, 0, 0
+		
+@keyOnRegTbl:
+		.BYTE $00, $01, $02, $04, $05, $06
+		
+@A0RegTbl:
+		.BYTE $A0, $A1, $A2, $A0, $A1, $A2	
+@A4RegTbl:
+		.BYTE $A4, $A5, $A6, $A4, $A5, $A6
+
+; =========================================================================================
+;
+; - FM patch data format
+;     REG $B0/$B1/$B2, REG $B4/$B5/$B6
+;     REG $30-$3E, REG $40-$4E, REG $50-$5E, REG $60-$6E, REG $70-$7E, REG $80-$8E, REG $90-$9E for OP1
+;     REG $30-$3E, REG $40-$4E, REG $50-$5E, REG $60-$6E, REG $70-$7E, REG $80-$8E, REG $90-$9E for OP3
+;     REG $30-$3E, REG $40-$4E, REG $50-$5E, REG $60-$6E, REG $70-$7E, REG $80-$8E, REG $90-$9E for OP2
+;     REG $30-$3E, REG $40-$4E, REG $50-$5E, REG $60-$6E, REG $70-$7E, REG $80-$8E, REG $90-$9E for OP4
+;
+; =========================================================================================
+
+MACRO furEPSM_loadEPSM regoffset
+		LDY #0
+		STY furEPSM_temp0
+
+		LDA furEPSM_B0RegTbl,X
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_B4RegTbl,X
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		ORA #$C0 ; TODO : panning
+		STA $401D+regoffset
+		
+		CLC
+@oploop:
+		LDA furEPSM_30RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_40RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_50RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_60RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_70RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_80RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_90RegTbl,X
+		ADC furEPSM_temp0
+		STA $401C+regoffset
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA $401D+regoffset
+		
+		LDA furEPSM_temp0
+		ADC #4
+		STA furEPSM_temp0
+		CMP #16
+		BNE @oploop
+		PLA
+		TAY
+		RTS
+ENDM
+		
+furEPSM_uploadFMPatch:
+		TYA
+		PHA
+		LDA furEPSM_fChanInst,X
+		ASL
+		TAY
+		LDA furEPSM_instptr+0,Y
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_instptr+1,Y
+		STA furEPSM_temp_ptr+1
+
+		CPX #3
+		; BNE @secondbank
+		BEQ @firstbank
+		JMP @secondbank
+@firstbank:
+		furEPSM_loadEPSM 0
+@secondbank:
+		furEPSM_loadEPSM +2
+		
+furEPSM_B0RegTbl:
+		.BYTE $B0, $B1, $B2, $B0, $B1, $B2
+		
+furEPSM_B4RegTbl:
+		.BYTE $B4, $B5, $B6, $B4, $B5, $B6
+
+furEPSM_30RegTbl:
+		.BYTE $30, $31, $32, $30, $31, $32
+furEPSM_40RegTbl:
+		.BYTE $40, $41, $42, $40, $41, $42
+furEPSM_50RegTbl:
+		.BYTE $50, $51, $52, $50, $51, $52
+furEPSM_60RegTbl:
+		.BYTE $60, $61, $62, $60, $61, $62
+furEPSM_70RegTbl:
+		.BYTE $70, $71, $72, $70, $71, $72
+furEPSM_80RegTbl:
+		.BYTE $80, $81, $82, $80, $81, $82
+furEPSM_90RegTbl:
+		.BYTE $90, $91, $92, $90, $91, $92
+		
 ; =========================================================================================
 
 furEPSM_fnumTable:
