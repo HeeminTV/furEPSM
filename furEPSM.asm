@@ -40,7 +40,8 @@ enum furEPSM_bss
 		furEPSM_chanPatHi: .dsb furEPSM_allChan
 		furEPSM_chanDefaultDelay: .dsb furEPSM_allChan
 		furEPSM_chanDelay: .dsb furEPSM_allChan
-		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00 = kill the channel, $01 = release (does nothing in FM), $02-$7F = note
+		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00-$7D = note
+		furEPSM_chanStatus: .dsb furEPSM_allChan
 
 		furEPSM_fChanInst: .dsb furEPSM_fmChan ; bit 7 = instrument changed flag
 		furEPSM_fChanVol: .dsb furEPSM_fmChan ; bit 7 = volume changed flag
@@ -54,6 +55,14 @@ enum furEPSM_bss
 		furEPSM_sChanVolEnvPtrLoLo: .dsb furEPSM_ssgChan
 		furEPSM_sChanVolEnvPtrLoHi: .dsb furEPSM_ssgChan
 		furEPSM_sChanVolEnvPos: .dsb furEPSM_ssgChan
+ende
+
+enum 0 ; must be in order
+		furEPSM_CHANSTAT_NOTECUT: .dsb 1
+		furEPSM_CHANSTAT_NOTERELEASE: .dsb 1
+
+		furEPSM_CHANSTAT_NONE: .dsb 1
+		furEPSM_CHANSTAT_NEWNOTE: .dsb 1
 ende
 
 ; =========================================================================================
@@ -96,11 +105,13 @@ furEPSM_play:
 		
 		LDA #$80
 		STA furEPSM_songFlag
-		
-		LDA #0 ; note off
+
 		LDX #furEPSM_allChan-1
 @clear1:
+		LDA #0
 		STA furEPSM_chanBaseNote,X
+		LDA #furEPSM_CHANSTAT_NOTECUT
+		STA furEPSM_chanStatus,X
 		DEX
 		BPL @clear1
 		
@@ -289,7 +300,13 @@ furEPSM_updateSeq:
 		CMP #$80 ; INY ate negative flag :(
 		BCS @effectloop
 @notes:
+		CMP #2 ; note cut
+		BCC @misc
+		SBC #2 ; carry is set
 		STA furEPSM_chanBaseNote,X
+		LDA #furEPSM_CHANSTAT_NEWNOTE
+@misc:
+		STA furEPSM_chanStatus,X
 		
 		LDA (furEPSM_temp_ptr),Y ; Check if next command is a note (stop reading) or a command (continue reading)
 		BPL @sequpdatedone
@@ -375,9 +392,6 @@ furEPSM_updatePitch:
 		LDX #furEPSM_fmChan-1
 @getbasefreq:
 		LDA furEPSM_chanBaseNote,X
-		BEQ @noteoff
-		SEC
-		SBC #2
 		JSR furEPSM_getBaseFNum
 		LDA furEPSM_temp_ptr2+0
 		STA furEPSM_fChanBaseFLo,X
@@ -385,7 +399,6 @@ furEPSM_updatePitch:
 		STA furEPSM_fChanBaseFHi,X
 		LDA furEPSM_temp0
 		STA furEPSM_fChanBaseOct,X
-@noteoff:
 		DEX
 		BPL @getbasefreq
 		
@@ -406,6 +419,8 @@ furEPSM_getBaseFNum: ; A = note
 
 		; SEC
 		; SBC #2
+		CLC
+		ADC #9
 		TAY
 		LDA #0
 		STA furEPSM_temp0
@@ -417,11 +432,10 @@ furEPSM_getBaseFNum: ; A = note
 		INC furEPSM_temp0
 		BNE @getmod ; always
 @ret:
-		ASL
 		TAY
-		LDA furEPSM_fnumTable+0,Y
+		LDA furEPSM_fnumTableLo,Y
 		STA furEPSM_temp_ptr2+0
-		LDA furEPSM_fnumTable+1,Y
+		LDA furEPSM_fnumTableHi,Y
 		STA furEPSM_temp_ptr2+1
 		
 		LDY furEPSM_temp1 ; restore Y
@@ -432,22 +446,41 @@ furEPSM_getBaseFNum: ; A = note
 furEPSM_updateRegFM:
 		LDX #furEPSM_fmChan
 @loop:
-		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
-
 		LDA #$28
 		STA $401C
 
-		LDA furEPSM_chanBaseNote,X
-		BNE @not_noteoff ; $00 = note cut
+		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
+		
+		LDA furEPSM_chanStatus,X
+		CMP #furEPSM_CHANSTAT_NEWNOTE
+		BNE @not_new_note
+		LDA #furEPSM_CHANSTAT_NONE
+		STA furEPSM_chanStatus,X
+
+		LDA @keyOnRegTbl,X
+		STA $401D
+		PHA ; wait
+		PLA
+		PHA
+		PLA
+		PHA
+		PLA
+		BPL @not_noteoff
+@not_new_note:
+
+		LDA furEPSM_chanStatus,X
+		CMP #furEPSM_CHANSTAT_NOTECUT
+		BNE @not_noteoff
 ; Note off
+@keyoff:
 		LDA @keyOnRegTbl,X
 		STA $401D
 		BPL @dont_enable_key ; always
 @not_noteoff:
-		; TODO : release notes?
 		LDA @keyOnRegTbl,X
 		ORA #$F0
 		STA $401D
+
 @dont_enable_key:
 		LDA furEPSM_fChanInst,X
 		BPL @noinstchange
@@ -455,10 +488,6 @@ furEPSM_updateRegFM:
 		STA furEPSM_fChanInst,X
 		JSR furEPSM_uploadFMPatch
 @noinstchange:
-		LDA @A0RegTbl,X
-		STA $401C,Y
-		LDA furEPSM_fChanFLo,X
-		STA $401D,Y
 		
 		LDA @A4RegTbl,X
 		STA $401C,Y
@@ -469,6 +498,11 @@ furEPSM_updateRegFM:
 		STA furEPSM_temp0
 		LDA furEPSM_fChanFHi,X
 		ORA furEPSM_temp0
+		STA $401D,Y
+		
+		LDA @A0RegTbl,X
+		STA $401C,Y
+		LDA furEPSM_fChanFLo,X
 		STA $401D,Y
 		
 		DEX
@@ -622,7 +656,9 @@ furEPSM_90RegTbl:
 		
 ; =========================================================================================
 
-furEPSM_fnumTable:
-		.WORD $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
+furEPSM_fnumTableLo:
+		.DL $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
+furEPSM_fnumTableHi:
+		.DH $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
 
 ; =========================================================================================
