@@ -1,18 +1,33 @@
 # furEPSM
 
-A ***WIP*** lightweight NES [EPSM](https://www.nesdev.org/wiki/Expansion_Port_Sound_Module) music driver for Furnace.
+A ***WIP*** lightweight NES [EPSM](https://www.nesdev.org/wiki/Expansion_Port_Sound_Module) music driver for [Furnace](https://github.com/tildearrow/furnace)
 
 Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to put EPSM tracks into your game. Waited a long time, tracker users.
 
 ## Resource usage
 
 - CPU cycles: Approx. 1800 cycles
-- RAM usage: 144 bytes
+- RAM usage: 144 bytes (6 bytes on zero-page)
 - ROM usage: 1200 bytes
 
 ## Supported effects
 
 - `FFxx` - Stop song
+
+## TODO
+
+- Add SSG support
+- Add rhythm kit support
+- Add pitch bend effects (portamento, vibrato)
+- Add panning effect
+- Add tempo (BPM) support
+- Add volume column support
+
+## Non-goals
+
+- FM macros
+- SSG PCM streaming
+- 2A03 APU hijack
 
 ## Usage
 
