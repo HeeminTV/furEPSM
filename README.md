@@ -4,11 +4,15 @@ A ***WIP*** lightweight NES [EPSM](https://www.nesdev.org/wiki/Expansion_Port_So
 
 Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to put EPSM tracks into your game. Waited a long time, tracker users.
 
-# Resource usage
+## Resource usage
 
 - CPU cycles: Approx. 1800 cycles
 - RAM usage: 144 bytes
 - ROM usage: 1200 bytes
+
+## Supported effects
+
+- `FFxx` - Stop song
 
 ## Usage
 
