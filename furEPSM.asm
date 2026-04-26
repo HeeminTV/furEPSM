@@ -369,6 +369,8 @@ furEPSM_updateSeq:
 		.WORD @eff_vibrato			; $83
 		.WORD @eff_end				; $84
 		
+; ------------------------------------------------
+
 @eff_inst:
 		LDA (furEPSM_temp_ptr),Y
 		INY
@@ -378,7 +380,9 @@ furEPSM_updateSeq:
 		STA furEPSM_fChanInst,X
 @skipsetflag:
 		JMP @effret
-		
+
+; ------------------------------------------------
+	
 @eff_vol:
 		LDA (furEPSM_temp_ptr),Y
 		INY
@@ -388,7 +392,9 @@ furEPSM_updateSeq:
 		STA furEPSM_fChanVol,X
 @skipsetflag2:
 		JMP @effret
-		
+
+; ------------------------------------------------
+
 @eff_maxvol:
 		LDA #$7F
 		CMP furEPSM_fChanVol,X
@@ -398,12 +404,16 @@ furEPSM_updateSeq:
 @skipsetflag3:
 		JMP @effret
 	
+; ------------------------------------------------
+
 @eff_vibrato:
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		; TODO
 		JMP @effret
 		
+; ------------------------------------------------
+
 @eff_end:
 		LDA furEPSM_songFlag
 		ORA #$40
@@ -416,13 +426,25 @@ furEPSM_updatePitch:
 		LDX #furEPSM_fmChan-1
 @getbasefreq:
 		LDA furEPSM_chanBaseNote,X
-		JSR furEPSM_getBaseFNum
-		LDA furEPSM_temp_ptr2+0
+		CLC
+		ADC #9
+		LDY #0
+@getmod:
+		CMP #12
+		BCC @ret
+		SBC #12
+		INY
+		BNE @getmod ; always
+@ret:
+		STY furEPSM_temp0
+		TAY
+		LDA furEPSM_fnumTableLo,Y
 		STA furEPSM_fChanBaseFLo,X
-		LDA furEPSM_temp_ptr2+1
+		LDA furEPSM_fnumTableHi,Y
 		STA furEPSM_fChanBaseFHi,X
 		LDA furEPSM_temp0
 		STA furEPSM_fChanBaseOct,X
+
 		DEX
 		BPL @getbasefreq
 		
@@ -436,31 +458,6 @@ furEPSM_updatePitch:
 		STA furEPSM_fChanOct,X
 		DEX
 		BPL @applyfreq
-		RTS
-
-furEPSM_getBaseFNum: ; A = note
-		STY furEPSM_temp1 ; save Y
-
-		CLC
-		ADC #9
-		TAY
-		LDA #0
-		STA furEPSM_temp0
-		TYA
-@getmod:
-		CMP #12
-		BCC @ret
-		SBC #12
-		INC furEPSM_temp0
-		BNE @getmod ; always
-@ret:
-		TAY
-		LDA furEPSM_fnumTableLo,Y
-		STA furEPSM_temp_ptr2+0
-		LDA furEPSM_fnumTableHi,Y
-		STA furEPSM_temp_ptr2+1
-		
-		LDY furEPSM_temp1 ; restore Y
 		RTS
 
 ; =========================================================================================
@@ -563,7 +560,7 @@ furEPSM_updateRegFM:
 ;
 ; =========================================================================================
 
-MACRO furEPSM_loadEPSM regoffset
+MACRO furEPSM_loadEPSMPatch regoffset
 		LDY #0
 		STY furEPSM_temp0
 
@@ -660,10 +657,10 @@ furEPSM_uploadFMPatch:
 		BCC @firstbank
 		JMP @secondbank
 @firstbank:
-		furEPSM_loadEPSM 0
+		furEPSM_loadEPSMPatch 0
 @secondbank:
 		AXS #3 ; cap the X range to 0-2
-		furEPSM_loadEPSM +2
+		furEPSM_loadEPSMPatch +2
 
 MACRO furEPSM_saveNewTL op
 		LDY #2+(7*(((op-1)>>1)|(((op-1)<< 1)&2)))+1
@@ -718,28 +715,27 @@ furEPSM_updateTL:
 		furEPSM_saveNewTL 2
 @op4only:
 		furEPSM_saveNewTL 4
-		RTS
-		
-furEPSM_B0RegTbl:
-		.BYTE $B0, $B1, $B2
-		
-furEPSM_B4RegTbl:
-		.BYTE $B4, $B5, $B6
 
+furEPSM_60RegTbl: ; RTS
+		.BYTE $60, $61, $62
 furEPSM_30RegTbl:
 		.BYTE $30, $31, $32
 furEPSM_40RegTbl:
 		.BYTE $40, $41, $42, $40, $41, $42
 furEPSM_50RegTbl:
 		.BYTE $50, $51, $52
-furEPSM_60RegTbl:
-		.BYTE $60, $61, $62
 furEPSM_70RegTbl:
 		.BYTE $70, $71, $72
 furEPSM_80RegTbl:
 		.BYTE $80, $81, $82
 furEPSM_90RegTbl:
 		.BYTE $90, $91, $92
+		
+furEPSM_B0RegTbl:
+		.BYTE $B0, $B1, $B2
+		
+furEPSM_B4RegTbl:
+		.BYTE $B4, $B5, $B6
 		
 ; =========================================================================================
 ;
