@@ -4,7 +4,7 @@
 ;
 ; =========================================================================================
 
-furEPSM_zp = $FA ; 6 bytes zero page variable
+furEPSM_zp = $FB ; 5 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
 ; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
@@ -16,7 +16,6 @@ enum furEPSM_zp
 		furEPSM_temp_ptr: .dsb 2
 		furEPSM_temp_ptr2: .dsb 2
 		furEPSM_temp0: .dsb 1
-		furEPSM_temp1: .dsb 1
 ende
 
 furEPSM_fmChan = 6
@@ -43,19 +42,17 @@ enum furEPSM_bss
 		furEPSM_chanDelay: .dsb furEPSM_allChan
 		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00-$7D = note
 		furEPSM_chanStatus: .dsb furEPSM_allChan
+		furEPSM_chanInst: .dsb furEPSM_allChan ; bit 7 = instrument changed flag
+		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
 
-		furEPSM_fChanInst: .dsb furEPSM_fmChan ; bit 7 = instrument changed flag
-		furEPSM_fChanVol: .dsb furEPSM_fmChan ; bit 7 = volume changed flag
-		furEPSM_fChanBaseFLo: .dsb furEPSM_fmChan ; base note freq
-		furEPSM_fChanBaseFHi: .dsb furEPSM_fmChan
-		furEPSM_fChanBaseOct: .dsb furEPSM_fmChan
 		furEPSM_fChanFLo: .dsb furEPSM_fmChan ; final register out
 		furEPSM_fChanFHi: .dsb furEPSM_fmChan
 		furEPSM_fChanOct: .dsb furEPSM_fmChan
 
-		furEPSM_sChanVolEnvPtrLoLo: .dsb furEPSM_ssgChan
-		furEPSM_sChanVolEnvPtrLoHi: .dsb furEPSM_ssgChan
 		furEPSM_sChanVolEnvPos: .dsb furEPSM_ssgChan
+		furEPSM_sChanFreqLo: .dsb furEPSM_ssgChan ; final register out
+		furEPSM_sChanFreqHi: .dsb furEPSM_ssgChan
+		furEPSM_sChanVol: .dsb furEPSM_ssgChan
 ende
 
 enum 0 ; must be in order
@@ -113,17 +110,12 @@ furEPSM_play:
 		STA furEPSM_chanBaseNote,X
 		LDA #furEPSM_CHANSTAT_NOTECUT
 		STA furEPSM_chanStatus,X
+		LDA #$7F
+		STA furEPSM_chanInst,X
+		STA furEPSM_chanVol,X
 		DEX
 		BPL @clear1
 		STX furEPSM_jumpFrame
-		
-		LDA #$7F
-		LDX #furEPSM_fmChan-1
-@clear2:
-		STA furEPSM_fChanInst,X
-		STA furEPSM_fChanVol,X
-		DEX
-		BPL @clear2
 
 		LDA #1
 		STA furEPSM_delayTick
@@ -179,9 +171,11 @@ furEPSM_update:
 @no_next_frame:
 		JSR furEPSM_updateSpeed
 @no_seq_update:
-		JSR furEPSM_updatePitch
+		JSR furEPSM_updatePitchFM
 		JSR furEPSM_updateRegFM
-		; JSR furEPSM_updateRegSSG
+		JSR furEPSM_updatePitchSSG
+		JSR furEPSM_updateVolSSG
+		JSR furEPSM_updateRegSSG
 		
 		BIT furEPSM_songFlag
 		BVC @no_stop_command
@@ -218,6 +212,11 @@ furEPSM_silenceChannels:
 		STA $401D
 		INX
 		STX $401C
+		STA $401D
+		
+		LDA #7
+		STA $401C
+		LDA #$38
 		STA $401D
 		
 		LDX #$20
@@ -385,10 +384,10 @@ furEPSM_updateSeq:
 @eff_inst:
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		CMP furEPSM_fChanInst,X
+		CMP furEPSM_chanInst,X
 		BEQ @skipsetflag
 		ORA #$80
-		STA furEPSM_fChanInst,X
+		STA furEPSM_chanInst,X
 @skipsetflag:
 		JMP @effret
 
@@ -397,10 +396,10 @@ furEPSM_updateSeq:
 @eff_vol:
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		CMP furEPSM_fChanVol,X
+		CMP furEPSM_chanVol,X
 		BEQ @skipsetflag2
 		ORA #$80
-		STA furEPSM_fChanVol,X
+		STA furEPSM_chanVol,X
 @skipsetflag2:
 		JMP @effret
 
@@ -408,10 +407,10 @@ furEPSM_updateSeq:
 
 @eff_maxvol:
 		LDA #$7F
-		CMP furEPSM_fChanVol,X
+		CMP furEPSM_chanVol,X
 		BEQ @skipsetflag3
 		ORA #$80
-		STA furEPSM_fChanVol,X
+		STA furEPSM_chanVol,X
 @skipsetflag3:
 		JMP @effret
 	
@@ -454,7 +453,7 @@ furEPSM_updateSeq:
 		
 ; =========================================================================================
 
-furEPSM_updatePitch:
+furEPSM_updatePitchFM:
 		LDX #furEPSM_fmChan-1
 @getbasefreq:
 		LDA furEPSM_chanBaseNote,X
@@ -470,48 +469,46 @@ furEPSM_updatePitch:
 @ret:
 		STY furEPSM_temp0
 		TAY
-		LDA furEPSM_fnumTableLo,Y
-		STA furEPSM_fChanBaseFLo,X
-		LDA furEPSM_fnumTableHi,Y
-		STA furEPSM_fChanBaseFHi,X
+		LDA furEPSM_fnumTblLo,Y
+		STA furEPSM_fChanFLo,X
+		LDA furEPSM_fnumTblHi,Y
+		STA furEPSM_fChanFHi,X
 		LDA furEPSM_temp0
-		STA furEPSM_fChanBaseOct,X
+		STA furEPSM_fChanOct,X
 
 		DEX
 		BPL @getbasefreq
 		
-		LDX #furEPSM_allChan-1
-@applyfreq:
-		LDA furEPSM_fChanBaseFLo,X
-		STA furEPSM_fChanFLo,X
-		LDA furEPSM_fChanBaseFHi,X
-		STA furEPSM_fChanFHi,X
-		LDA furEPSM_fChanBaseOct,X
-		STA furEPSM_fChanOct,X
-		DEX
-		BPL @applyfreq
+		; LDX #furEPSM_allChan-1
+; @applyfreq:
+		; LDA furEPSM_fChanBaseFLo,X
+		; STA furEPSM_fChanFLo,X
+		; LDA furEPSM_fChanBaseFHi,X
+		; STA furEPSM_fChanFHi,X
+		; LDA furEPSM_fChanBaseOct,X
+		; STA furEPSM_fChanOct,X
+		; DEX
+		; BPL @applyfreq
 		RTS
-
-; =========================================================================================
 
 furEPSM_updateRegFM:
 		LDX #furEPSM_fmChan-1
 @loop:
 		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
 
-		LDA furEPSM_fChanInst,X
+		LDA furEPSM_chanInst,X
 		BPL @noinstchange
 		AND #$7F
-		STA furEPSM_fChanInst,X
-		LDA furEPSM_fChanVol,X ; force volume update
+		STA furEPSM_chanInst,X
+		LDA furEPSM_chanVol,X ; force volume update
 		ORA #$80
-		STA furEPSM_fChanVol,X
+		STA furEPSM_chanVol,X
 		JSR furEPSM_uploadFMPatch
 @noinstchange:
-		LDA furEPSM_fChanVol,X
+		LDA furEPSM_chanVol,X
 		BPL @novolchange
 		AND #$7F
-		STA furEPSM_fChanVol,X
+		STA furEPSM_chanVol,X
 		JSR furEPSM_updateTL
 @novolchange:
 
@@ -675,7 +672,7 @@ ENDM
 furEPSM_uploadFMPatch:
 		TYA
 		PHA
-		LDA furEPSM_fChanInst,X
+		LDA furEPSM_chanInst,X
 		ASL
 		TAY
 		LDA furEPSM_instptr+0,Y
@@ -704,7 +701,7 @@ MACRO furEPSM_saveNewTL op
 		EOR #$7F
 		CLC
 		ADC #1
-		LDY furEPSM_fChanVol,X
+		LDY furEPSM_chanVol,X
 		JSR furEPSM_mult
 		ASL furEPSM_temp_ptr2+1
 		ROL
@@ -716,7 +713,7 @@ ENDM
 furEPSM_updateTL:
 		STY furEPSM_temp0 ; y saver
 		
-		LDA furEPSM_fChanInst,X
+		LDA furEPSM_chanInst,X
 		ASL
 		TAY
 		LDA furEPSM_instptr+0,Y
@@ -807,9 +804,110 @@ furEPSM_mult:
 		
 ; =========================================================================================
 
-furEPSM_fnumTableLo:
+furEPSM_updatePitchSSG:
+		LDX #furEPSM_ssgChan-1
+@loop:
+		LDY furEPSM_chanBaseNote+6,X
+		LDA furEPSM_ssgPeriodTblLo,Y
+		STA furEPSM_sChanFreqLo,X
+		LDA furEPSM_ssgPeriodTblHi,Y
+		STA furEPSM_sChanFreqHi,X
+		DEX
+		BPL @loop
+		RTS
+		
+furEPSM_updateVolSSG:
+		LDX #furEPSM_ssgChan-1
+@loop:
+		LDA #0
+		STA furEPSM_sChanVol,X
+
+		LDA furEPSM_chanStatus+6,X
+		CMP #furEPSM_CHANSTAT_NOTECUT
+		BEQ @skip
+		CMP #furEPSM_CHANSTAT_NEWNOTE
+		BNE @not_newnote
+		LDA #furEPSM_CHANSTAT_NONE
+		STA furEPSM_chanStatus+6,X
+		LDA #0
+		STA furEPSM_sChanVolEnvPos,X
+@not_newnote:
+		LDA furEPSM_chanInst+6,X
+		ASL
+		TAY
+		LDA furEPSM_instptr+0,Y
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_instptr+1,Y
+		STA furEPSM_temp_ptr+1
+		LDY furEPSM_sChanVolEnvPos,X
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_sChanVol,X
+		LDA (furEPSM_temp_ptr),Y
+		CMP #16
+		BCC @skip_volenvloop
+		SBC #16 ; carry is set
+		STA furEPSM_sChanVolEnvPos,X
+		BCS @volenvloopdone
+@skip_volenvloop:
+		INC furEPSM_sChanVolEnvPos,X
+@volenvloopdone:
+@skip:
+		DEX
+		BPL @loop
+		RTS
+		
+furEPSM_updateRegSSG:
+		LDX #furEPSM_ssgChan-1
+@loop:
+		LDA @00RegTbl,X
+		STA $401C
+		LDA furEPSM_sChanFreqLo,X
+		STA $401D
+
+		LDA @01RegTbl,X
+		STA $401C
+		LDA furEPSM_sChanFreqHi,X
+		STA $401D
+		
+		LDA @08RegTbl,X
+		STA $401C
+		LDA furEPSM_sChanVol,X
+		STA $401D
+		
+		DEX
+		BPL @loop
+		RTS
+
+@00RegTbl:
+		.BYTE $00, $02, $04
+@01RegTbl:
+		.BYTE $01, $03, $05
+@08RegTbl:
+		.BYTE $08, $09, $0A
+		
+; =========================================================================================
+
+furEPSM_fnumTblLo:
 		.DL $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
-furEPSM_fnumTableHi:
+furEPSM_fnumTblHi:
 		.DH $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
+		
+furEPSM_ssgPeriodTblLo:
+		.DL $11C1, $10C2, $0FD2, $0EEE, $0E18, $0D4D, $0C8E, $0BDA, $0B2F, $0A8F, $09F7, $0968
+		.DL $08E1, $0861, $07E9, $0777, $070C, $06A7, $0647, $05ED, $0598, $0547, $04FC, $04B4
+		.DL $0470, $0431, $03F4, $03BC, $0386, $0353, $0324, $02F6, $02CC, $02A4, $027E, $025A
+		.DL $0238, $0218, $01FA, $01DE, $01C3, $01AA, $0192, $017B, $0166, $0152, $013F, $012D
+		.DL $011C, $010C, $00FD, $00EF, $00E1, $00D5, $00C9, $00BE, $00B3, $00A9, $009F, $0096
+		.DL $008E, $0086, $007F, $0077, $0071, $006A, $0064, $005F, $0059, $0054, $0050, $004B
+		.DL $0047, $0043, $003F, $003C, $0038, $0035, $0032, $002F
+furEPSM_ssgPeriodTblHi:
+		.DH $11C1, $10C2, $0FD2, $0EEE, $0E18, $0D4D, $0C8E, $0BDA, $0B2F, $0A8F, $09F7, $0968
+		.DH $08E1, $0861, $07E9, $0777, $070C, $06A7, $0647, $05ED, $0598, $0547, $04FC, $04B4
+		.DH $0470, $0431, $03F4, $03BC, $0386, $0353, $0324, $02F6, $02CC, $02A4, $027E, $025A
+		.DH $0238, $0218, $01FA, $01DE, $01C3, $01AA, $0192, $017B, $0166, $0152, $013F, $012D
+		.DH $011C, $010C, $00FD, $00EF, $00E1, $00D5, $00C9, $00BE, $00B3, $00A9, $009F, $0096
+		.DH $008E, $0086, $007F, $0077, $0071, $006A, $0064, $005F, $0059, $0054, $0050, $004B
+		.DH $0047, $0043, $003F, $003C, $0038, $0035, $0032, $002F
 
 ; =========================================================================================

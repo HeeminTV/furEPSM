@@ -7,7 +7,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 ## Resource usage
 
 - CPU cycles: Approx. 1800 cycles
-- RAM usage: 144 bytes (+ 6 bytes on zero-page)
+- RAM usage: 134 bytes (+ 5 bytes on zero-page)
 - ROM usage: 1200 bytes
 
 ## Supported effects
@@ -18,11 +18,16 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## TODO
 
-- Add SSG support
+- Add noise support for SSG
 - Add rhythm kit support
 - Add pitch bend effects (portamento, vibrato)
 - Add panning effect
 - Add tempo (BPM) support
+
+## Major missing features
+
+- SSG macros except for volume
+- SSG macro release
 
 ## Non-goals
 
@@ -58,7 +63,7 @@ In very first lines of `furEPSM.asm`, you can locate where furEPSM RAM variables
 ;
 ; =========================================================================================
 
-furEPSM_zp = $FA ; 6 bytes zero page variable
+furEPSM_zp = $FB ; 5 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
 ...

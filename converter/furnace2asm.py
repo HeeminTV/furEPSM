@@ -212,12 +212,20 @@ def convert_furnace(input_path):
                     idx -= 1; break
                     
                 if l.startswith('- vol:'):
+                    lastindex = 0
+                    looppoint = -1
                     parts = l.replace('- vol:', '').strip().split()
                     macro = []
-                    for p in parts:
-                        if p == '/': macro.append(0x80)
+                    for i, p in enumerate(parts):
+                        # if p == '/': macro.append(0xFF)
+                        if p == '|': looppoint = i
                         else: macro.append(int(p))
-                    macro.append(0xFF)
+                        lastindex = i
+
+                    if looppoint == -1:
+                        looppoint = lastindex
+
+                    macro.append(looppoint+16)
                     vol_macro = macro
             instruments.append({'type': 6, 'data': vol_macro})
         idx += 1
