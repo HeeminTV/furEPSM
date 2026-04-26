@@ -35,6 +35,7 @@ enum furEPSM_bss
 		furEPSM_groovePos: .dsb 1
 		furEPSM_delayTick: .dsb 1
 		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing, bit 6 = stop command occured
+		furEPSM_jumpFrame: .dsb 1 ; $FF = no jump
 
 		furEPSM_chanPatLo: .dsb furEPSM_allChan
 		furEPSM_chanPatHi: .dsb furEPSM_allChan
@@ -114,6 +115,7 @@ furEPSM_play:
 		STA furEPSM_chanStatus,X
 		DEX
 		BPL @clear1
+		STX furEPSM_jumpFrame
 		
 		LDA #$7F
 		LDX #furEPSM_fmChan-1
@@ -156,6 +158,12 @@ furEPSM_update:
 		DEX
 		BPL @seq_loop
 		
+		CPX furEPSM_jumpFrame
+		BEQ @no_jumpframe_specified
+		LDA furEPSM_jumpFrame
+		BCC @jumpframe ; always
+@no_jumpframe_specified:
+		
 		INC furEPSM_currRow
 		LDA furEPSM_currRow
 		CMP furEPSM_rows
@@ -166,6 +174,7 @@ furEPSM_update:
 		BNE @no_frame_wrap
 		LDA #0
 @no_frame_wrap:
+@jumpframe:
 		JSR furEPSM_loadFrame
 @no_next_frame:
 		JSR furEPSM_updateSpeed
@@ -367,7 +376,9 @@ furEPSM_updateSeq:
 		.WORD @eff_vol 				; $81
 		.WORD @eff_maxvol			; $82
 		.WORD @eff_vibrato			; $83
-		.WORD @eff_end				; $84
+		.WORD @eff_nextframe		; $84
+		.WORD @eff_jumpframe		; $85
+		.WORD @eff_end				; $86
 		
 ; ------------------------------------------------
 
@@ -411,6 +422,27 @@ furEPSM_updateSeq:
 		INY
 		; TODO
 		JMP @effret
+		
+; ------------------------------------------------
+		
+@eff_nextframe:
+		LDA furEPSM_currFrame
+		CLC
+		ADC #1
+@frameexceedcheck:
+		CMP furEPSM_frames
+		BCC @not_frameexceed
+		LDA #0
+@not_frameexceed:
+		STA furEPSM_jumpFrame
+		JMP @effret
+		
+; ------------------------------------------------
+
+@eff_jumpframe:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		BNE @frameexceedcheck ; always
 		
 ; ------------------------------------------------
 
