@@ -695,6 +695,10 @@ furEPSM_uploadFMPatch:
 		furEPSM_loadEPSMPatch +2
 
 MACRO furEPSM_saveNewTL op
+		LDA furEPSM_40RegTbl,X
+		ADC #((((op-1)>>1)|((op-1)<<1)&2))*4 ; carry is clear
+		STA $401C,Y
+
 		LDY #2+(7*(((op-1)>>1)|(((op-1)<< 1)&2)))+1
 		LDA (furEPSM_temp_ptr),Y
 		EOR #$7F
@@ -705,14 +709,7 @@ MACRO furEPSM_saveNewTL op
 		ASL furEPSM_temp_ptr2+1
 		ROL
 		EOR #$7F
-		STA furEPSM_temp1
-
 		LDY furEPSM_temp0
-
-		LDA furEPSM_40RegTbl,X
-		ADC #((((op-1)>>1)|((op-1)<<1)&2))*4 ; carry is clear
-		STA $401C,Y
-		LDA furEPSM_temp1
 		STA $401D,Y
 ENDM
 
@@ -729,6 +726,7 @@ furEPSM_updateTL:
 		
 		LDY #0
 		LDA (furEPSM_temp_ptr),Y
+		LDY furEPSM_temp0
 		AND #7 ; ALG
 		; 0, 1, 2, 3 	= OP4 only
 		; 4 			= OP2, OP4
