@@ -34,7 +34,7 @@ enum furEPSM_bss
 		furEPSM_groovePtr: .dsb 2
 		furEPSM_groovePos: .dsb 1
 		furEPSM_delayTick: .dsb 1
-		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing
+		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing, bit 6 = stop command occured
 
 		furEPSM_chanPatLo: .dsb furEPSM_allChan
 		furEPSM_chanPatHi: .dsb furEPSM_allChan
@@ -173,6 +173,12 @@ furEPSM_update:
 		JSR furEPSM_updatePitch
 		JSR furEPSM_updateRegFM
 		; JSR furEPSM_updateRegSSG
+		
+		BIT furEPSM_songFlag
+		BVC @no_stop_command
+		LDA #0
+		STA furEPSM_songFlag
+@no_stop_command:
 		RTS
 
 ; =========================================================================================
@@ -251,7 +257,7 @@ furEPSM_loadFrame:
 		
 		; LDX #furEPSM_allChan-1
 @loop2:
-		LDA #-1
+		LDA #255
 		STA furEPSM_chanDefaultDelay-1,X
 		LDA #1
 		STA furEPSM_chanDelay-1,X
@@ -296,10 +302,9 @@ furEPSM_updateSeq:
 		LDY #0
 
 		LDA (furEPSM_temp_ptr),Y
-		INY
-		CMP #$80 ; INY ate negative flag :(
-		BCS @effectloop
+		BMI @effectloop
 @notes:
+		INY
 		CMP #2 ; note cut
 		BCC @misc
 		SBC #2 ; carry is set
@@ -310,8 +315,8 @@ furEPSM_updateSeq:
 		
 		LDA (furEPSM_temp_ptr),Y ; Check if next command is a note (stop reading) or a command (continue reading)
 		BPL @sequpdatedone
-		INY
 @effectloop:
+		INY
 		CMP #$C0
 		BCS @delay
 
@@ -331,7 +336,6 @@ furEPSM_updateSeq:
 		CMP #$A0
 		BCS @sequpdatedone
 		LDA (furEPSM_temp_ptr),Y
-		INY
 		BCC @effectloop ; always
 		
 @delay:
@@ -362,6 +366,7 @@ furEPSM_updateSeq:
 		.WORD @eff_inst 			; $80
 		.WORD @eff_vol 				; $81
 		.WORD @eff_vibrato			; $82
+		.WORD @eff_end				; $83
 		
 @eff_inst:
 		LDA (furEPSM_temp_ptr),Y
@@ -384,6 +389,12 @@ furEPSM_updateSeq:
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		; TODO
+		JMP @effret
+		
+@eff_end:
+		LDA furEPSM_songFlag
+		ORA #$40
+		STA furEPSM_songFlag
 		JMP @effret
 		
 ; =========================================================================================
@@ -472,7 +483,7 @@ furEPSM_updateRegFM:
 		PLA
 		PHA
 		PLA
-		BPL @not_noteoff
+		BPL @not_noteoff ; always
 @not_new_note:
 
 		LDA furEPSM_chanStatus,X

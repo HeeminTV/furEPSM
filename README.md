@@ -14,7 +14,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 The driver is particularly intended to use with bankswitched songs. You should write your own bankswitching logic. (a music driver will have no idea how your bankswitching system works) Just the update routine has to be called with the correct bank set right before.
 
-The bytecode converter accepts Furnace .txt export and generates one header file and track sequence data for each subsongs.
+The bytecode converter accepts YM2608 (no CSM or exp 3CH) Furnace .txt export and generates one header file and track sequence data for each subsongs.
 
 ### Including in your game
 

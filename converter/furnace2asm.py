@@ -31,8 +31,9 @@ def parse_cell(cell_str):
     for fx in fx_strs:
         if fx != '....':
             etype = fx[:2]
-            eval_ = int(fx[2:], 16)
+            eval_ = int(fx[2:], 16) if fx[2:] != '..' else int('0',16)
             if etype == '04': fx_list.append(('FX_82', eval_))
+            if etype == 'FF': fx_list.append(('FX_83', eval_))
             # 추가할 이펙트가 있으면 여기에 계속 추가
             
     return note, fx_list
@@ -45,6 +46,7 @@ def encode_fx(fx, is_last):
     if fx[0] == 'INST': return [base | 0x00, fx[1]]
     elif fx[0] == 'VOL': return [base | 0x01, fx[1]]
     elif fx[0] == 'FX_82': return [base | 0x02, fx[1]]
+    elif fx[0] == 'FX_83': return [base | 0x03]
     return []
 
 def emit_row(note, fx_list):
