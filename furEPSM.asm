@@ -347,9 +347,9 @@ furEPSM_updateSeq:
 		CLC
 		ADC furEPSM_temp_ptr+0
 		STA furEPSM_chanPatLo,X
-		LDA furEPSM_chanPatHi
+		LDA furEPSM_chanPatHi,X
 		ADC #0
-		STA furEPSM_chanPatHi
+		STA furEPSM_chanPatHi,X
 		RTS
 	
 ; =========================================================================================
