@@ -417,8 +417,6 @@ furEPSM_updatePitch:
 furEPSM_getBaseFNum: ; A = note
 		STY furEPSM_temp1 ; save Y
 
-		; SEC
-		; SBC #2
 		CLC
 		ADC #9
 		TAY
@@ -444,9 +442,16 @@ furEPSM_getBaseFNum: ; A = note
 ; =========================================================================================
 
 furEPSM_updateRegFM:
-		LDX #furEPSM_fmChan
+		LDX #furEPSM_fmChan-1
 @loop:
-		LDA #$28
+		LDA furEPSM_fChanInst,X
+		BPL @noinstchange
+		AND #$7F
+		STA furEPSM_fChanInst,X
+		JSR furEPSM_uploadFMPatch
+@noinstchange:
+
+		LDA #$28 ; KEYON
 		STA $401C
 
 		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
@@ -460,6 +465,8 @@ furEPSM_updateRegFM:
 		LDA @keyOnRegTbl,X
 		STA $401D
 		PHA ; wait
+		PLA
+		PHA
 		PLA
 		PHA
 		PLA
@@ -482,12 +489,6 @@ furEPSM_updateRegFM:
 		STA $401D
 
 @dont_enable_key:
-		LDA furEPSM_fChanInst,X
-		BPL @noinstchange
-		AND #$7F
-		STA furEPSM_fChanInst,X
-		JSR furEPSM_uploadFMPatch
-@noinstchange:
 		
 		LDA @A4RegTbl,X
 		STA $401C,Y
@@ -495,9 +496,7 @@ furEPSM_updateRegFM:
 		ASL
 		ASL
 		ASL
-		STA furEPSM_temp0
-		LDA furEPSM_fChanFHi,X
-		ORA furEPSM_temp0
+		ORA furEPSM_fChanFHi,X
 		STA $401D,Y
 		
 		LDA @A0RegTbl,X

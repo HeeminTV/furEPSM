@@ -7,7 +7,7 @@ Yes, finally a public EPSM driver that *isn't* [FamiStudio](https://famistudio.o
 # Resource usage
 
 - CPU cycles: Approx. 1800 cycles
-- RAM usage: 122 bytes
+- RAM usage: 144 bytes
 - ROM usage: TODO
 
 ## Usage
