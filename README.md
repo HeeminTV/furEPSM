@@ -2,7 +2,7 @@
 
 A ***WIP*** lightweight NES [EPSM](https://www.nesdev.org/wiki/Expansion_Port_Sound_Module) music driver for Furnace.
 
-Yes, finally a public EPSM driver that *isn't* [FamiStudio](https://famistudio.org/). Waited a long time, tracker users.
+Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to put EPSM tracks into your game. Waited a long time, tracker users.
 
 # Resource usage
 
