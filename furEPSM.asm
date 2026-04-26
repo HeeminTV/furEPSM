@@ -20,9 +20,8 @@ ende
 
 furEPSM_fmChan = 6
 furEPSM_ssgChan = 3
-furEPSM_rhythmChan = 1
 
-furEPSM_allChan = furEPSM_fmChan+furEPSM_ssgChan+furEPSM_rhythmChan
+furEPSM_allChan = furEPSM_fmChan+furEPSM_ssgChan
 
 enum furEPSM_bss
 		furEPSM_framesPtr: .dsb 2
@@ -139,7 +138,7 @@ furEPSM_update:
 		DEC furEPSM_delayTick
 		BNE @no_seq_update
 		
-		LDX #furEPSM_allChan-furEPSM_rhythmChan-1
+		LDX #furEPSM_allChan-1
 @seq_loop:
 		DEC furEPSM_chanDelay,X
 		BNE @skip_seq
