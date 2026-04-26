@@ -32,8 +32,8 @@ def parse_cell(cell_str):
         if fx != '....':
             etype = fx[:2]
             eval_ = int(fx[2:], 16) if fx[2:] != '..' else int('0',16)
-            if etype == '04': fx_list.append(('FX_82', eval_))
-            if etype == 'FF': fx_list.append(('FX_83', eval_))
+            if etype == '04': fx_list.append(('eff_vibrato', eval_))
+            if etype == 'FF': fx_list.append(('eff_end', eval_))
             # 추가할 이펙트가 있으면 여기에 계속 추가
             
     return note, fx_list
@@ -44,9 +44,9 @@ def is_cell_empty(note, fx_list):
 def encode_fx(fx, is_last):
     base = 0xA0 if is_last else 0x80
     if fx[0] == 'INST': return [base | 0x00, fx[1]]
-    elif fx[0] == 'VOL': return [base | 0x01, fx[1]]
-    elif fx[0] == 'FX_82': return [base | 0x02, fx[1]]
-    elif fx[0] == 'FX_83': return [base | 0x03]
+    elif fx[0] == 'VOL': return [base | 0x01, fx[1]] if fx[1] != 0x7F else [base | 0x02]
+    elif fx[0] == 'eff_vibrato': return [base | 0x03, fx[1]]
+    elif fx[0] == 'eff_end': return [base | 0x04]
     return []
 
 def emit_row(note, fx_list):

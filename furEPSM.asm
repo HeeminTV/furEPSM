@@ -305,7 +305,7 @@ furEPSM_updateSeq:
 		BMI @effectloop
 @notes:
 		INY
-		CMP #2 ; note cut
+		CMP #2 ; note cut / note release
 		BCC @misc
 		SBC #2 ; carry is set
 		STA furEPSM_chanBaseNote,X
@@ -365,8 +365,9 @@ furEPSM_updateSeq:
 @commandtbl:
 		.WORD @eff_inst 			; $80
 		.WORD @eff_vol 				; $81
-		.WORD @eff_vibrato			; $82
-		.WORD @eff_end				; $83
+		.WORD @eff_maxvol			; $82
+		.WORD @eff_vibrato			; $83
+		.WORD @eff_end				; $84
 		
 @eff_inst:
 		LDA (furEPSM_temp_ptr),Y
@@ -374,15 +375,27 @@ furEPSM_updateSeq:
 		CMP furEPSM_fChanInst,X
 		BEQ @skipsetflag
 		ORA #$80
-@skipsetflag:
 		STA furEPSM_fChanInst,X
+@skipsetflag:
 		JMP @effret
 		
 @eff_vol:
 		LDA (furEPSM_temp_ptr),Y
 		INY
+		CMP furEPSM_fChanVol,X
+		BEQ @skipsetflag2
 		ORA #$80
 		STA furEPSM_fChanVol,X
+@skipsetflag2:
+		JMP @effret
+		
+@eff_maxvol:
+		LDA #$7F
+		CMP furEPSM_fChanVol,X
+		BEQ @skipsetflag3
+		ORA #$80
+		STA furEPSM_fChanVol,X
+@skipsetflag3:
 		JMP @effret
 	
 @eff_vibrato:
@@ -455,17 +468,26 @@ furEPSM_getBaseFNum: ; A = note
 furEPSM_updateRegFM:
 		LDX #furEPSM_fmChan-1
 @loop:
+		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
+
 		LDA furEPSM_fChanInst,X
 		BPL @noinstchange
 		AND #$7F
 		STA furEPSM_fChanInst,X
+		LDA furEPSM_fChanVol,X ; force volume update
+		ORA #$80
+		STA furEPSM_fChanVol,X
 		JSR furEPSM_uploadFMPatch
 @noinstchange:
+		LDA furEPSM_fChanVol,X
+		BPL @novolchange
+		AND #$7F
+		STA furEPSM_fChanVol,X
+		JSR furEPSM_updateTL
+@novolchange:
 
 		LDA #$28 ; KEYON
 		STA $401C
-
-		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
 		
 		LDA furEPSM_chanStatus,X
 		CMP #furEPSM_CHANSTAT_NEWNOTE
@@ -642,6 +664,61 @@ furEPSM_uploadFMPatch:
 @secondbank:
 		AXS #3 ; cap the X range to 0-2
 		furEPSM_loadEPSM +2
+
+MACRO furEPSM_saveNewTL op
+		LDY #2+(7*(((op-1)>>1)|(((op-1)<< 1)&2)))+1
+		LDA (furEPSM_temp_ptr),Y
+		EOR #$7F
+		CLC
+		ADC #1
+		LDY furEPSM_fChanVol,X
+		JSR furEPSM_mult
+		ASL furEPSM_temp_ptr2+1
+		ROL
+		EOR #$7F
+		STA furEPSM_temp1
+
+		LDY furEPSM_temp0
+
+		LDA furEPSM_40RegTbl,X
+		ADC #((((op-1)>>1)|((op-1)<<1)&2))*4 ; carry is clear
+		STA $401C,Y
+		LDA furEPSM_temp1
+		STA $401D,Y
+ENDM
+
+furEPSM_updateTL:
+		STY furEPSM_temp0 ; y saver
+		
+		LDA furEPSM_fChanInst,X
+		ASL
+		TAY
+		LDA furEPSM_instptr+0,Y
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_instptr+1,Y
+		STA furEPSM_temp_ptr+1
+		
+		LDY #0
+		LDA (furEPSM_temp_ptr),Y
+		AND #7 ; ALG
+		; 0, 1, 2, 3 	= OP4 only
+		; 4 			= OP2, OP4
+		; 5, 6 			= OP2, OP3, OP4
+		; 7 			= OP1, OP2, OP3, OP4
+		CMP #4
+		BCC @op4only
+		BEQ @op2op4
+		CMP #7
+		BNE @op2op3op4
+
+		furEPSM_saveNewTL 1
+@op2op3op4:
+		furEPSM_saveNewTL 3
+@op2op4:
+		furEPSM_saveNewTL 2
+@op4only:
+		furEPSM_saveNewTL 4
+		RTS
 		
 furEPSM_B0RegTbl:
 		.BYTE $B0, $B1, $B2
@@ -652,7 +729,7 @@ furEPSM_B4RegTbl:
 furEPSM_30RegTbl:
 		.BYTE $30, $31, $32
 furEPSM_40RegTbl:
-		.BYTE $40, $41, $42
+		.BYTE $40, $41, $42, $40, $41, $42
 furEPSM_50RegTbl:
 		.BYTE $50, $51, $52
 furEPSM_60RegTbl:
@@ -663,6 +740,44 @@ furEPSM_80RegTbl:
 		.BYTE $80, $81, $82
 furEPSM_90RegTbl:
 		.BYTE $90, $91, $92
+		
+; =========================================================================================
+;
+; - furEPSM_mult: Perform A*X multiplication
+;     input: A = multiplier, Y = multiplicand
+;     output: furEPSM_temp_ptr2+1 = result LSB, A = result MSB
+;
+; =========================================================================================
+		
+furEPSM_mult:
+		cpY #0              ;
+		beq @zero            ; a*0=0
+		deY                 ; decrement multiplicand to avoid the clc before 'adc multiplicand'
+		stY furEPSM_temp_ptr2+0    ;
+		lsr                 ; prepare first bit
+		sta furEPSM_temp_ptr2+1      ;
+		lda #0              ;
+		ldY #4              ;
+@l0:
+		bcc @l1               ; no add
+		adc furEPSM_temp_ptr2+0    ;
+@l1:
+		ror                 ;
+		ror furEPSM_temp_ptr2+1      ;
+		bcc @l2               ; no add
+		adc furEPSM_temp_ptr2+0    ;
+@l2:
+		ror                 ;
+		ror furEPSM_temp_ptr2+1      ;
+		deY                 ;
+		bne @l0               ;
+		; TAY
+		; ldA furEPSM_temp_ptr2+1      ;
+		rts                 ;
+
+@zero:
+		tYa                 ; a = 0
+		rts                 ;
 		
 ; =========================================================================================
 

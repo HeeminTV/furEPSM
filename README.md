@@ -21,7 +21,6 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - Add pitch bend effects (portamento, vibrato)
 - Add panning effect
 - Add tempo (BPM) support
-- Add volume column support
 
 ## Non-goals
 
