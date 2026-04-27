@@ -44,13 +44,19 @@ def is_cell_empty(note, fx_list):
 
 def encode_fx(fx, is_last):
     base = 0xA0 if is_last else 0x80
-    if fx[0] == 'INST': return [base | 0x00, fx[1]]
-    elif fx[0] == 'VOL': return [base | 0x01, fx[1]] if fx[1] != 0x7F else [base | 0x02]
-    elif fx[0] == 'eff_vibrato': return [base | 0x03, fx[1]]
-    elif fx[0] == 'eff_nextframe': return [base | 0x04]
-    elif fx[0] == 'eff_jumpframe': return [base | 0x05, fx[1]]
-    elif fx[0] == 'eff_end': return [base | 0x06]
-    elif fx[0] == 'eff_set_delay': return [base | 0x07, fx[1]] # 노트와 동반될 때 쓰이는 2바이트 논-터미네이팅 딜레이
+    if fx[0] == 'INST':
+        inst_val = fx[1]
+        # Quick Instrument Change (0~31) - Non-Terminating
+        if not is_last and 0 <= inst_val <= 31:
+            return [0xC0 + inst_val]
+        # Otherwise, standard 2-byte command
+        return [base | 0x00, inst_val]
+    elif fx[0] == 'VOL':                return [base | 0x01, fx[1]] if fx[1] != 0x7F else [base | 0x02]
+    elif fx[0] == 'eff_vibrato':        return [base | 0x03, fx[1]]
+    elif fx[0] == 'eff_nextframe':      return [base | 0x04]
+    elif fx[0] == 'eff_jumpframe':      return [base | 0x05, fx[1]]
+    elif fx[0] == 'eff_end':            return [base | 0x06]
+    elif fx[0] == 'eff_set_delay':      return [base | 0x07, fx[1] & 0xFF]
     return []
 
 def emit_row(note, fx_list):
@@ -58,25 +64,29 @@ def emit_row(note, fx_list):
     len_fx = next((f for f in fx_list if f[0] == 'LEN'), None)
     norm_fx = [f for f in fx_list if f[0] != 'LEN']
     
-    # 1. 일반 이펙트 처리 (논-터미네이팅 우선)
+    use_standalone_delay = (note is None) and (len_fx is not None)
+
+    # 1. 일반 이펙트 처리
     if len(norm_fx) > 0:
         for i, f in enumerate(norm_fx):
-            # 노트도 없고 딜레이도 없다면 마지막 이펙트가 터미네이팅 플래그($A0)를 가져야 함
+            # 노트도 없고 독립 딜레이도 없다면, 마지막 이펙트가 무조건 종료자(Terminator) 역할을 해야함
             is_last = (i == len(norm_fx) - 1) and (note is None) and (len_fx is None)
             out.extend(encode_fx(f, is_last=is_last))
             
-    # 2. 길이(딜레이) 커맨드 처리
+    # 2. 딜레이(LEN) 커맨드 처리
     if len_fx:
-        if note is not None:
-            # [충돌 방지] 노트가 있다면 노트가 종료자 역할을 할 것이므로, 
-            # 딜레이 설정은 논-터미네이팅 이펙트($87)로 처리합니다.
-            out.extend(encode_fx(('eff_set_delay', len_fx[1]), is_last=False))
+        if use_standalone_delay:
+            # 독립 딜레이 커맨드: $E0~$FE (1~31), $FF (256)
+            chunk_val = len_fx[1]
+            if chunk_val == 256:
+                out.append(0xFF)
+            else:
+                out.append(0xE0 + chunk_val - 1)
         else:
-            # 노트가 없다면 기존의 1바이트 터미네이팅 딜레이($C0-$FF)를 사용합니다.
-            chunk_val = min(len_fx[1], 64) # 최대 64 방어
-            out.append(0xC0 + chunk_val - 1)
+            # 노트와 동반되거나 일반 종료자가 있을 때 사용하는 2바이트 논터미네이팅 딜레이 ($87)
+            out.extend(encode_fx(('eff_set_delay', len_fx[1]), is_last=False))
             
-    # 3. 노트 삽입 (항상 맨 마지막에 위치!)
+    # 3. 노트 삽입 (항상 맨 마지막에 위치하여 완벽한 종료자 역할 수행)
     if note is not None:
         out.append(note)
         
@@ -89,7 +99,6 @@ def to_byte_str(byte_list):
 def generate_channel_data(cells_for_all_rows, is_rhythm=False):
     N = len(cells_for_all_rows)
     
-    # 악기 중복 제거 전처리
     if not is_rhythm:
         current_inst = -1
         for i in range(N):
@@ -114,13 +123,12 @@ def generate_channel_data(cells_for_all_rows, is_rhythm=False):
             next_ne += 1
             
         gap = next_ne - i
+        
+        # GAP 처리 (빈 줄 처리: 무조건 독립 딜레이 커맨드로 변환)
         while gap > 0:
-            chunk = min(gap, 64)
-            if chunk != current_length:
-                bytes_out.extend(emit_row(None, [('LEN', chunk)]))
-                current_length = chunk
-            else:
-                bytes_out.extend(emit_row(None, [('LEN', chunk)]))
+            chunk = 256 if gap >= 256 else min(gap, 31)
+            bytes_out.extend(emit_row(None, [('LEN', chunk)]))
+            current_length = chunk
             gap -= chunk
             
         if next_ne == N:
@@ -128,38 +136,50 @@ def generate_channel_data(cells_for_all_rows, is_rhythm=False):
             
         note, fx_list = cells_for_all_rows[next_ne]
         
+        # 이벤트 지속 거리(dist) 계산
         dist = 1
         for j in range(next_ne + 1, N):
             if not is_cell_empty(*cells_for_all_rows[j]):
                 break
             dist += 1
             
-        while dist > 64:
-            if 64 != current_length:
-                fx_list.append(('LEN', 64))
-                current_length = 64
+        # 첫 번째 Chunk 분리 (현재 Row의 노트/이펙트를 포함)
+        if note is not None:
+            first_chunk = min(dist, 256)
+            if first_chunk != current_length:
+                fx_list.append(('LEN', first_chunk))
+                current_length = first_chunk
             bytes_out.extend(emit_row(note, fx_list))
-            dist -= 64
-            note = None
-            fx_list = [('LEN', min(dist, 64))]
-            current_length = min(dist, 64)
+            remaining_dist = dist - first_chunk
+        else:
+            first_chunk = 256 if dist >= 256 else min(dist, 31)
+            if first_chunk != current_length:
+                fx_list.append(('LEN', first_chunk))
+                current_length = first_chunk
+            elif len(fx_list) == 0:
+                # 이펙트조차 없다면 종료자가 없으므로 독립 딜레이 커맨드 강제 생성
+                fx_list.append(('LEN', first_chunk))
             
-        if dist != current_length:
-            fx_list.append(('LEN', dist))
-            current_length = dist
+            bytes_out.extend(emit_row(None, fx_list))
+            remaining_dist = dist - first_chunk
+
+        # 현재 이벤트를 기록하고 남은 틱들을 빈 GAP과 똑같이 처리
+        while remaining_dist > 0:
+            chunk = 256 if remaining_dist >= 256 else min(remaining_dist, 31)
+            bytes_out.extend(emit_row(None, [('LEN', chunk)]))
+            current_length = chunk
+            remaining_dist -= chunk
             
-        bytes_out.extend(emit_row(note, fx_list))
         i = next_ne + dist
     
-    # 마지막 바이트가 터미네이팅 상태가 아니면 강제 종료자 삽입
+    # 마지막 바이트가 논터미네이팅 상태로 끝나는 경우 방어 로직
     if not bytes_out:
-        bytes_out.append(0xFF)
+        bytes_out.append(0xE0) # Delay 1 강제 삽입
     else:
         last_b = bytes_out[-1]
-        # $80~$9F는 Non-terminating 이므로 예외적으로 종료자 추가가 필요함.
-        # (노트(< $80)나 다른 터미네이팅 바이트(>= $A0)는 추가 불필요)
-        if 0x80 <= last_b <= 0x9F:
-            bytes_out.append(0xFF)
+        # Non-terminating 범위: $80~$9F (이펙트), $C0~$DF (Quick Inst)
+        if (0x80 <= last_b <= 0x9F) or (0xC0 <= last_b <= 0xDF):
+            bytes_out.append(0xE0) # Delay 1 강제 삽입하여 틱 종료 유도
         
     return bytes_out
 
@@ -314,7 +334,7 @@ def convert_furnace(input_path):
                 ptr_strs = []
                 for ch in range(6): ptr_strs.append(f"@fm{ch+1}pat{order[ch]}")
                 for ch in range(3): ptr_strs.append(f"@ssg{ch+1}pat{order[6+ch]}")
-                ptr_strs.append(f"@rhythmpat{order[9]}")
+                # ptr_strs.append(f"@rhythmpat{order[9]}")
                 f.write("    .WORD " + ", ".join(ptr_strs) + "\n\n")
                 
             for pat_id, rows in song['patterns'].items():
@@ -330,24 +350,24 @@ def convert_furnace(input_path):
                     b_out = generate_channel_data(ch_cells, is_rhythm=False)
                     f.write("    " + to_byte_str(b_out) + "\n")
                 
-                f.write(f"@rhythmpat{pat_id}:\n")
-                rhythm_cells = []
-                for r in rows:
-                    bitmask = 0
-                    combined_fx = []
-                    for rc_idx in range(6):
-                        note, fx = parse_cell(r[9+rc_idx])
-                        if note is not None and note >= 0x02:
-                            bitmask |= (1 << rc_idx)
-                        for efx in fx:
-                            if not any(cf[0] == efx[0] for cf in combined_fx):
-                                combined_fx.append(efx)
+                # f.write(f"@rhythmpat{pat_id}:\\n")
+                # rhythm_cells = []
+                # for r in rows:
+                    # bitmask = 0
+                    # combined_fx = []
+                    # for rc_idx in range(6):
+                        # note, fx = parse_cell(r[9+rc_idx])
+                        # if note is not None and note >= 0x02:
+                            # bitmask |= (1 << rc_idx)
+                        # for efx in fx:
+                            # if not any(cf[0] == efx[0] for cf in combined_fx):
+                                # combined_fx.append(efx)
                     
-                    r_note = bitmask if bitmask > 0 else None
-                    rhythm_cells.append((r_note, combined_fx))
+                    # r_note = bitmask if bitmask > 0 else None
+                    # rhythm_cells.append((r_note, combined_fx))
                     
-                b_out = generate_channel_data(rhythm_cells, is_rhythm=True)
-                f.write("    " + to_byte_str(b_out) + "\n\n")
+                # b_out = generate_channel_data(rhythm_cells, is_rhythm=True)
+                # f.write("    " + to_byte_str(b_out) + "\n\n")
 
         print(f"Generated {song_filename}")
 

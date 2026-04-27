@@ -324,7 +324,7 @@ furEPSM_updateSeq:
 @effect:
 		INY
 		CMP #$C0
-		BCS @delay
+		BCS @somethingelse
 
 		PHA
 		AND #$1F
@@ -354,10 +354,22 @@ furEPSM_updateSeq:
 		
 ; ------------------------------------------------
 		
+@somethingelse:
+		CMP #$E0
+		BCS @delay
+; quick instrument change
+		AND #$1F
+		CMP furEPSM_chanInst,X
+		BEQ @skipsetflag4
+		ORA #$80
+		STA furEPSM_chanInst,X
+@skipsetflag4:
+		JMP @readloop
+
 @delay:
 		CMP #$FF ; no single note / effects in this frame
 		BEQ @framelock
-		AND #$3F
+		AND #$1F
 		ADC #1 ; carry is clear
 @framelock:
 		STA furEPSM_chanDefaultDelay,x
@@ -810,8 +822,8 @@ furEPSM_mult:
 		rts                 ;
 
 @zero:
+		STY furEPSM_temp_ptr2+1
 		tYa                 ; a = 0
-		STA furEPSM_temp_ptr2+1
 		rts                 ;
 		
 ; =========================================================================================

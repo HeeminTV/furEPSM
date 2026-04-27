@@ -12,4 +12,6 @@ $80-$9F = effects
 
 $A0-$BF = effects (T)
 
-$C0-$FF = delay (T)
+$C0-$DF = quick instrument change
+
+$E0-$FF = delay (T)
