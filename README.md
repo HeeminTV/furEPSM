@@ -18,6 +18,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## TODO
 
+- Add rhythm kit support
 - Add noise support for SSG
 - Add pitch bend effects (portamento, vibrato)
 - Add panning effect
@@ -30,12 +31,11 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - SSG macro release
 - Rhythm kit support
 
-## Non-goals (or long-term goals)
+## Non-goals
 
 - FM macros
 - SSG PCM streaming
 - 2A03 APU hijack
-- Rhythm kit support
 
 ## Usage
 

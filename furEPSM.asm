@@ -308,8 +308,9 @@ furEPSM_updateSeq:
 		
 		LDY #0
 
+@readloop:
 		LDA (furEPSM_temp_ptr),Y
-		BMI @effectloop
+		BMI @effect
 @notes:
 		INY
 		CMP #2 ; note cut / note release
@@ -319,10 +320,9 @@ furEPSM_updateSeq:
 		LDA #furEPSM_CHANSTAT_NEWNOTE
 @misc:
 		STA furEPSM_chanStatus,X
-		
-		LDA (furEPSM_temp_ptr),Y ; Check if next command is a note (stop reading) or a command (continue reading)
-		BPL @sequpdatedone
-@effectloop:
+		JMP @sequpdatedone
+
+@effect:
 		INY
 		CMP #$C0
 		BCS @delay
@@ -338,21 +338,11 @@ furEPSM_updateSeq:
 		STA furEPSM_temp_ptr2+1
 		LDY furEPSM_temp0
 		JMP (furEPSM_temp_ptr2)
+
 @effret:
 		PLA
 		CMP #$A0
-		BCS @sequpdatedone
-		LDA (furEPSM_temp_ptr),Y
-		BCC @effectloop ; always
-		
-@delay:
-		CMP #$FF ; no single note / effects in this frame
-		BEQ @framelock
-		AND #$3F
-		ADC #1 ; carry is clear
-@framelock:
-		STA furEPSM_chanDelay,X
-		STA furEPSM_chanDefaultDelay,x
+		BCC @readloop
 @sequpdatedone:
 		TYA
 		CLC
@@ -362,6 +352,18 @@ furEPSM_updateSeq:
 		ADC #0
 		STA furEPSM_chanPatHi,X
 		RTS
+		
+; ------------------------------------------------
+		
+@delay:
+		CMP #$FF ; no single note / effects in this frame
+		BEQ @framelock
+		AND #$3F
+		ADC #1 ; carry is clear
+@framelock:
+		STA furEPSM_chanDefaultDelay,x
+		STA furEPSM_chanDelay,X
+		JMP @sequpdatedone
 	
 ; =========================================================================================
 ;
@@ -377,6 +379,7 @@ furEPSM_updateSeq:
 		.WORD @eff_nextframe		; $84
 		.WORD @eff_jumpframe		; $85
 		.WORD @eff_end				; $86
+		.WORD @eff_set_delay		; $87
 		
 ; ------------------------------------------------
 
@@ -448,6 +451,15 @@ furEPSM_updateSeq:
 		LDA furEPSM_songFlag
 		ORA #$40
 		STA furEPSM_songFlag
+		JMP @effret
+		
+; ------------------------------------------------
+
+@eff_set_delay:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_chanDefaultDelay,x
+		STA furEPSM_chanDelay,X
 		JMP @effret
 		
 ; =========================================================================================
@@ -799,6 +811,7 @@ furEPSM_mult:
 
 @zero:
 		tYa                 ; a = 0
+		STA furEPSM_temp_ptr2+1
 		rts                 ;
 		
 ; =========================================================================================

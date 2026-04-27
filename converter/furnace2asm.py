@@ -36,7 +36,6 @@ def parse_cell(cell_str):
             if etype == '0D': fx_list.append(('eff_nextframe', eval_))
             if etype == '0B': fx_list.append(('eff_nextframe', eval_))
             if etype == 'FF': fx_list.append(('eff_end', eval_))
-            # 추가할 이펙트가 있으면 여기에 계속 추가
             
     return note, fx_list
 
@@ -51,27 +50,36 @@ def encode_fx(fx, is_last):
     elif fx[0] == 'eff_nextframe': return [base | 0x04]
     elif fx[0] == 'eff_jumpframe': return [base | 0x05, fx[1]]
     elif fx[0] == 'eff_end': return [base | 0x06]
+    elif fx[0] == 'eff_set_delay': return [base | 0x07, fx[1]] # 노트와 동반될 때 쓰이는 2바이트 논-터미네이팅 딜레이
     return []
 
 def emit_row(note, fx_list):
     out = []
-    if note is not None:
-        out.append(note)
-        
     len_fx = next((f for f in fx_list if f[0] == 'LEN'), None)
     norm_fx = [f for f in fx_list if f[0] != 'LEN']
     
+    # 1. 일반 이펙트 처리 (논-터미네이팅 우선)
+    if len(norm_fx) > 0:
+        for i, f in enumerate(norm_fx):
+            # 노트도 없고 딜레이도 없다면 마지막 이펙트가 터미네이팅 플래그($A0)를 가져야 함
+            is_last = (i == len(norm_fx) - 1) and (note is None) and (len_fx is None)
+            out.extend(encode_fx(f, is_last=is_last))
+            
+    # 2. 길이(딜레이) 커맨드 처리
     if len_fx:
-        # LEN 이펙트가 있으면 무조건 ROW 파싱 중단이 보장되므로 이전 이펙트들은 $80~$9F 베이스 사용
-        for f in norm_fx:
-            out.extend(encode_fx(f, is_last=False))
-        out.append(0xC0 + len_fx[1] - 1)
-    else:
-        # LEN 이펙트가 없을 때
-        if len(norm_fx) > 0:
-            for i, f in enumerate(norm_fx):
-                is_last = (i == len(norm_fx) - 1)
-                out.extend(encode_fx(f, is_last=is_last))
+        if note is not None:
+            # [충돌 방지] 노트가 있다면 노트가 종료자 역할을 할 것이므로, 
+            # 딜레이 설정은 논-터미네이팅 이펙트($87)로 처리합니다.
+            out.extend(encode_fx(('eff_set_delay', len_fx[1]), is_last=False))
+        else:
+            # 노트가 없다면 기존의 1바이트 터미네이팅 딜레이($C0-$FF)를 사용합니다.
+            chunk_val = min(len_fx[1], 64) # 최대 64 방어
+            out.append(0xC0 + chunk_val - 1)
+            
+    # 3. 노트 삽입 (항상 맨 마지막에 위치!)
+    if note is not None:
+        out.append(note)
+        
     return out
 
 def to_byte_str(byte_list):
@@ -81,7 +89,7 @@ def to_byte_str(byte_list):
 def generate_channel_data(cells_for_all_rows, is_rhythm=False):
     N = len(cells_for_all_rows)
     
-    # 악기 중복 제거 전처리 (리듬 채널 제외)
+    # 악기 중복 제거 전처리
     if not is_rhythm:
         current_inst = -1
         for i in range(N):
@@ -143,10 +151,15 @@ def generate_channel_data(cells_for_all_rows, is_rhythm=False):
         bytes_out.extend(emit_row(note, fx_list))
         i = next_ne + dist
     
-    # --- 핵심 수정: 패턴의 마지막 바이트가 처리 종료자($A0 이상)가 아닐 때만 $FF 삽입 ---
-    # (빈 배열이거나, 마지막 바이트가 $A0 미만인 경우 = 종료자가 없음)
-    if not bytes_out or bytes_out[-1] < 0xA0:
+    # 마지막 바이트가 터미네이팅 상태가 아니면 강제 종료자 삽입
+    if not bytes_out:
         bytes_out.append(0xFF)
+    else:
+        last_b = bytes_out[-1]
+        # $80~$9F는 Non-terminating 이므로 예외적으로 종료자 추가가 필요함.
+        # (노트(< $80)나 다른 터미네이팅 바이트(>= $A0)는 추가 불필요)
+        if 0x80 <= last_b <= 0x9F:
+            bytes_out.append(0xFF)
         
     return bytes_out
 
@@ -155,13 +168,10 @@ def convert_furnace(input_path):
         lines = f.readlines()
 
     base_name = os.path.splitext(os.path.basename(input_path))[0]
-    
     instruments = []
     songs = []
-    
     idx = 0
     
-    # PHASE 1: 헤더 및 악기 파싱
     while idx < len(lines):
         line = lines[idx].strip()
         if '# Subsongs' in line:
@@ -217,7 +227,6 @@ def convert_furnace(input_path):
                     parts = l.replace('- vol:', '').strip().split()
                     macro = []
                     for i, p in enumerate(parts):
-                        # if p == '/': macro.append(0xFF)
                         if p == '|': looppoint = i
                         else: macro.append(int(p))
                         lastindex = i
@@ -230,7 +239,6 @@ def convert_furnace(input_path):
             instruments.append({'type': 6, 'data': vol_macro})
         idx += 1
 
-    # PHASE 2: 곡 및 패턴 파싱
     current_song = None
     while idx < len(lines):
         line = lines[idx].strip()
@@ -264,7 +272,6 @@ def convert_furnace(input_path):
             current_song['patterns'][order_id] = rows
         idx += 1
 
-    # PHASE 3: 헤더 .asm 파일 쓰기
     header_filename = f"{base_name}_header.asm"
     with open(header_filename, 'w') as f:
         f.write("furEPSM_header:\n")
@@ -287,7 +294,6 @@ def convert_furnace(input_path):
             f.write("\n")
     print(f"Generated {header_filename}")
 
-    # PHASE 4: 곡별 .asm 파일 쓰기
     for i, song in enumerate(songs):
         song_filename = f"{base_name}_song{i:02d}.asm"
         with open(song_filename, 'w') as f:

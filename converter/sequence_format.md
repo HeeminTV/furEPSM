@@ -1,13 +1,15 @@
-## furEPSM driver format 1.0
+## furEPSM driver format 1.1
 
-$00     = note cut
+`(T)` means reading this byte (or after its parameter, if available) terminates reading more commands in this tick.
 
-$01     = note release
+$00     = note cut (T)
 
-$02-$7F = note (starting from A-0)
+$01     = note release (T)
 
-$80-$9F = effect without ending channel read
+$02-$7F = note, starting from A-0 (T)
 
-$A0-$BF = effect with channel read done
+$80-$9F = effects
 
-$C0-$FF = delay command with channel read done
+$A0-$BF = effects (T)
+
+$C0-$FF = delay (T)
