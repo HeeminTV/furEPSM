@@ -307,7 +307,6 @@ furEPSM_updateSeq:
 		STA furEPSM_temp_ptr+1
 		
 		LDY #0
-
 @readloop:
 		LDA (furEPSM_temp_ptr),Y
 		BMI @effect
@@ -704,7 +703,8 @@ furEPSM_uploadFMPatch:
 
 MACRO furEPSM_saveNewTL op
 		LDA furEPSM_40RegTbl,X
-		ADC #((((op-1)>>1)|((op-1)<<1)&2))*4 ; carry is clear
+		CLC
+		ADC #((((op-1)>>1)|((op-1)<<1)&2))*4 
 		STA $401C,Y
 
 		LDY #2+(7*(((op-1)>>1)|(((op-1)<< 1)&2)))+1
