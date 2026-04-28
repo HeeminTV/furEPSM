@@ -35,8 +35,8 @@ enum furEPSM_bss
 		furEPSM_tempo: .dsb 1
 		furEPSM_tempoDec: .dsb 2
 		furEPSM_tempoAcc: .dsb 2
-		furEPSM_tempoRem: .dsb 2
 		furEPSM_tempoCnt: .dsb 2
+		furEPSM_tempoRem: .dsb 1
 		furEPSM_delayTick: .dsb 1
 		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing, bit 6 = stop command occured
 		furEPSM_jumpFrame: .dsb 1 ; $FF = no jump
@@ -197,10 +197,10 @@ furEPSM_update:
 
 		LDA furEPSM_tempoAcc+0
 		SEC
-		SBC furEPSM_tempoRem+0
+		SBC furEPSM_tempoRem
 		STA furEPSM_tempoAcc+0
 		LDA furEPSM_tempoAcc+1
-		SBC furEPSM_tempoRem+1
+		SBC #0
 		STA furEPSM_tempoAcc+1
 
 @no_seq_update:
@@ -320,15 +320,6 @@ furEPSM_loadFrame:
 furEPSM_calculateSpeed:
 		TXA
 		PHA
-		TYA
-		PHA
-
-		lda #0
-		sta furEPSM_tempoRem+0
-		sta furEPSM_tempoRem+1
-		STA furEPSM_tempoAcc+0
-		STA furEPSM_tempoAcc+1
-		STA furEPSM_tempoCnt+1
 
 		LDA furEPSM_tempo
 		STA furEPSM_tempoCnt+0
@@ -338,6 +329,7 @@ furEPSM_calculateSpeed:
 		ADC furEPSM_tempoCnt+0
 		STA furEPSM_tempoCnt+0
 		LDA furEPSM_tempoCnt+1
+		AND #1
 		ADC #0
 		ASL furEPSM_tempoCnt+0
 		ROL
@@ -347,32 +339,26 @@ furEPSM_calculateSpeed:
 		ROL
 		STA furEPSM_tempoCnt+1
 
-		ldx #16
+		LDX #16
+		LDA #0
+		STA furEPSM_tempoAcc+0
+		STA furEPSM_tempoAcc+1
 @divloop:
-		asl furEPSM_tempoCnt+0
-		rol furEPSM_tempoCnt+1
-		LDA #$FF
-		RLA furEPSM_tempoRem+0
-		rol furEPSM_tempoRem+1
-		sec
-		sbc furEPSM_speed
-		tay
-		lda furEPSM_tempoRem+1
-		sbc #0
-		bcc @skip
-
-		sta furEPSM_tempoRem+1
-		sty furEPSM_tempoRem+0
-		inc furEPSM_tempoCnt+0
+		ASL furEPSM_tempoCnt+0
+		ROL furEPSM_tempoCnt+1
+		ROL
+		CMP furEPSM_speed
+		BCC @skip
+		SBC furEPSM_speed ; carry is set
+		INC furEPSM_tempoCnt+0
 @skip:
-		dex
-		bne @divloop	
-		
-		PLA
-		TAY
+		DEX
+		BNE @divloop
+		STA furEPSM_tempoRem
+
 		PLA
 		TAX
-		rts
+		RTS
 		
 ; =========================================================================================
 ;
