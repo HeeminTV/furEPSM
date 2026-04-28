@@ -41,14 +41,18 @@ enum furEPSM_bss
 		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing, bit 6 = stop command occured
 		furEPSM_jumpFrame: .dsb 1 ; $FF = no jump
 
-		furEPSM_chanPatLo: .dsb furEPSM_allChan
-		furEPSM_chanPatHi: .dsb furEPSM_allChan
+		furEPSM_chanPtrLo: .dsb furEPSM_allChan
+		furEPSM_chanPtrHi: .dsb furEPSM_allChan
 		furEPSM_chanDefaultDelay: .dsb furEPSM_allChan
 		furEPSM_chanDelay: .dsb furEPSM_allChan
 		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00-$7D = note
 		furEPSM_chanStatus: .dsb furEPSM_allChan
 		furEPSM_chanInst: .dsb furEPSM_allChan ; bit 7 = instrument changed flag
 		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
+		
+		furEPSM_effDelayTimer: .dsb furEPSM_allChan ; $00 = no delay (obviously lol)
+		furEPSM_effDelayDelayedRowPtrLo: .dsb furEPSM_allChan
+		furEPSM_effDelayDelayedRowPtrHi: .dsb furEPSM_allChan
 
 		furEPSM_fChanFLo: .dsb furEPSM_fmChan ; final register out
 		furEPSM_fChanFHi: .dsb furEPSM_fmChan
@@ -116,6 +120,7 @@ furEPSM_play:
 @clear1:
 		LDA #0
 		STA furEPSM_chanBaseNote,X
+		STA furEPSM_effDelayTimer,X
 		LDA #furEPSM_CHANSTAT_NOTECUT
 		STA furEPSM_chanStatus,X
 		LDA #$7F
@@ -130,7 +135,7 @@ furEPSM_play:
 		LDA #>furEPSM_TEMPOCONSTANT
 		STA furEPSM_tempoDec+1
 		
-		JSR furEPSM_calculateSpeed
+		JSR furEPSM_calculateSpeed+2
 
 		LDA #1
 		STA furEPSM_delayTick
@@ -150,6 +155,33 @@ furEPSM_update:
 		BMI @is_play
 		RTS
 @is_play:
+
+		LDX #furEPSM_allChan-1
+@delayed_row_loop:
+		LDA furEPSM_effDelayTimer,X
+		BEQ @no_delay_row
+		DEC furEPSM_effDelayTimer,X
+		BNE @no_delay_row
+		
+		LDA furEPSM_chanPtrLo,X
+		PHA
+		LDA furEPSM_chanPtrHi,X
+		PHA
+
+		LDA furEPSM_effDelayDelayedRowPtrLo,X
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_effDelayDelayedRowPtrHi,X
+		JSR furEPSM_updateSeq+8
+		
+		PLA
+		STA furEPSM_chanPtrHi,X
+		PLA
+		STA furEPSM_chanPtrLo,X
+
+@no_delay_row:
+		DEX
+		BPL @delayed_row_loop
+
 		LDA furEPSM_tempoAcc+1
 		BMI @do_seq_update
 		ORA furEPSM_tempoAcc+0
@@ -179,11 +211,11 @@ furEPSM_update:
 		BNE @no_next_frame
 		INC furEPSM_currFrame
 		LDA furEPSM_currFrame
+@jumpframe:
 		CMP furEPSM_frames
 		BNE @no_frame_wrap
 		LDA #0
 @no_frame_wrap:
-@jumpframe:
 		JSR furEPSM_loadFrame
 @no_next_frame:
 		
@@ -297,10 +329,10 @@ furEPSM_loadFrame:
 @loop1:
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		STA furEPSM_chanPatLo,X
+		STA furEPSM_chanPtrLo,X
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		STA furEPSM_chanPatHi,X
+		STA furEPSM_chanPtrHi,X
 		INX
 		CPX #furEPSM_allChan
 		BNE @loop1
@@ -318,8 +350,7 @@ furEPSM_loadFrame:
 ; =========================================================================================
 
 furEPSM_calculateSpeed:
-		TXA
-		PHA
+		STX furEPSM_temp0
 
 		LDA furEPSM_tempo
 		STA furEPSM_tempoCnt+0
@@ -356,8 +387,7 @@ furEPSM_calculateSpeed:
 		BNE @divloop
 		STA furEPSM_tempoRem
 
-		PLA
-		TAX
+		LDX furEPSM_temp0
 		RTS
 		
 ; =========================================================================================
@@ -367,9 +397,9 @@ furEPSM_calculateSpeed:
 ; =========================================================================================
 		
 furEPSM_updateSeq:
-		LDA furEPSM_chanPatLo,X
+		LDA furEPSM_chanPtrLo,X
 		STA furEPSM_temp_ptr+0
-		LDA furEPSM_chanPatHi,X
+		LDA furEPSM_chanPtrHi,X
 		STA furEPSM_temp_ptr+1
 		
 		LDY #0
@@ -394,12 +424,11 @@ furEPSM_updateSeq:
 
 		PHA
 		AND #$1F
-		ASL
 		STY furEPSM_temp0
 		TAY
-		LDA @commandtbl+0,Y
+		LDA @commandtbl_lsb,Y
 		STA furEPSM_temp_ptr2+0
-		LDA @commandtbl+1,Y
+		LDA @commandtbl_msb,Y
 		STA furEPSM_temp_ptr2+1
 		LDY furEPSM_temp0
 		JMP (furEPSM_temp_ptr2)
@@ -412,10 +441,10 @@ furEPSM_updateSeq:
 		TYA
 		CLC
 		ADC furEPSM_temp_ptr+0
-		STA furEPSM_chanPatLo,X
-		LDA furEPSM_chanPatHi,X
+		STA furEPSM_chanPtrLo,X
+		LDA furEPSM_chanPtrHi,X
 		ADC #0
-		STA furEPSM_chanPatHi,X
+		STA furEPSM_chanPtrHi,X
 		RTS
 		
 ; ------------------------------------------------
@@ -448,18 +477,33 @@ furEPSM_updateSeq:
 ;
 ; =========================================================================================
 		
-@commandtbl:
-		.WORD @eff_inst 			; $80
-		.WORD @eff_vol 				; $81
-		.WORD @eff_maxvol			; $82
-		.WORD @eff_vibrato			; $83
-		.WORD @eff_nextframe		; $84
-		.WORD @eff_jumpframe		; $85
-		.WORD @eff_end				; $86
-		.WORD @eff_set_delay		; $87
+@commandtbl_lsb:
+		.DL @eff_inst 				; $80
+		.DL @eff_vol 				; $81
+		.DL @eff_maxvol				; $82
+		.DL @eff_vibrato			; $83
+		.DL @eff_nextframe			; $84
+		.DL @eff_jumpframe			; $85
+		.DL @eff_end				; $86
+		.DL @eff_set_delay			; $87
 		
-		.WORD @eff_speed			; $88
-		.WORD @eff_tempo			; $89
+		.DL @eff_speed				; $88
+		.DL @eff_tempo				; $89
+		.DL @eff_rowdelay			; $8A
+
+@commandtbl_msb:
+		.DH @eff_inst 				; $80
+		.DH @eff_vol 				; $81
+		.DH @eff_maxvol				; $82
+		.DH @eff_vibrato			; $83
+		.DH @eff_nextframe			; $84
+		.DH @eff_jumpframe			; $85
+		.DH @eff_end				; $86
+		.DH @eff_set_delay			; $87
+		
+		.DH @eff_speed				; $88
+		.DH @eff_tempo				; $89
+		.DH @eff_rowdelay			; $8A
 		
 ; ------------------------------------------------
 
@@ -559,6 +603,57 @@ furEPSM_updateSeq:
 		STA furEPSM_tempo
 		JSR furEPSM_calculateSpeed
 		JMP @effret
+		
+; ------------------------------------------------
+
+@eff_rowdelay:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_effDelayTimer,X
+		
+		TYA
+		CLC
+		ADC furEPSM_temp_ptr+0
+		STA furEPSM_effDelayDelayedRowPtrLo,X
+		LDA furEPSM_temp_ptr+1
+		ADC #0
+		STA furEPSM_effDelayDelayedRowPtrHi,X
+		
+		PLA
+		CMP #$A0
+		BCS @found ; next byte is next row's location
+
+@find_next_row: ; has to find next row's location. kinda like small interpritter.
+		LDA (furEPSM_temp_ptr),Y
+		PHP
+		INY
+		PLP
+		BPL @found ; note
+		CMP #$E0
+		BCS @found ; 1-byte delay
+		CMP #$C0
+		BCS @find_next_row ; quick instrument change
+; otherwise it should figure out if it's one byte command or two bytes
+		PHA
+		AND #$1F
+		STY furEPSM_temp0
+		TAY
+		LDA @commandtbl_lsb,Y
+		STA furEPSM_temp_ptr2+0
+		LDA @commandtbl_msb,Y
+		STA furEPSM_temp_ptr2+1
+		LDY #0
+		LDA (furEPSM_temp_ptr2),Y
+		LDY furEPSM_temp0
+		CMP #$B1 ; check if it's `LDA (zp),Y`, which indicates two byte command.
+		BNE @not_twobyte
+		INY
+@not_twobyte:
+		PLA
+		CMP #$A0 ; was the command terminating channel read?
+		BCC @find_next_row ; otherwise read next command
+@found:
+		JMP @sequpdatedone
 
 ; =========================================================================================
 

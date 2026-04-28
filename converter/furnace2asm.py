@@ -38,6 +38,7 @@ def parse_cell(cell_str):
             if etype == 'FF': fx_list.append(('eff_end', eval_))
             if etype == '0F': fx_list.append(('eff_speed', eval_))
             if etype == 'FD': fx_list.append(('eff_tempo', eval_))
+            if etype == 'ED': fx_list.append(('eff_rowdelay', eval_))
             
     return note, fx_list
 
@@ -61,23 +62,21 @@ def encode_fx(fx, is_last):
     elif fx[0] == 'eff_set_delay':      return [base | 0x07, fx[1] & 0xFF]
     elif fx[0] == 'eff_speed':          return [base | 0x08, fx[1]]
     elif fx[0] == 'eff_tempo':          return [base | 0x09, fx[1]]
+    elif fx[0] == 'eff_rowdelay':       return [base | 0x0A, fx[1]]
     return []
 
 def emit_row(note, fx_list):
     out = []
-    len_fx = next((f for f in fx_list if f[0] == 'LEN'), None)
-    norm_fx = [f for f in fx_list if f[0] != 'LEN']
     
-    use_standalone_delay = (note is None) and (len_fx is not None)
+    # 커맨드들을 종류별로 분류하여 우선순위에 따라 큐에 배치합니다.
+    len_fx = next((f for f in fx_list if f[0] == 'LEN'), None)
+    rowdelay_fx = next((f for f in fx_list if f[0] == 'eff_rowdelay'), None)
+    other_fx = [f for f in fx_list if f[0] not in ('LEN', 'eff_rowdelay')]
+    
+    # 오직 딜레이(빈 공간)만을 위해 존재하는 열인지 확인
+    use_standalone_delay = (note is None) and (len_fx is not None) and (len(other_fx) == 0) and (rowdelay_fx is None)
 
-    # 1. 일반 이펙트 처리
-    if len(norm_fx) > 0:
-        for i, f in enumerate(norm_fx):
-            # 노트도 없고 독립 딜레이도 없다면, 마지막 이펙트가 무조건 종료자(Terminator) 역할을 해야함
-            is_last = (i == len(norm_fx) - 1) and (note is None) and (len_fx is None)
-            out.extend(encode_fx(f, is_last=is_last))
-            
-    # 2. 딜레이(LEN) 커맨드 처리
+    # 1. 딜레이(LEN) 커맨드 처리 (항상 맨 먼저)
     if len_fx:
         if use_standalone_delay:
             # 독립 딜레이 커맨드: $E0~$FE (1~31), $FF (256)
@@ -86,11 +85,25 @@ def emit_row(note, fx_list):
                 out.append(0xFF)
             else:
                 out.append(0xE0 + chunk_val - 1)
+            return out  # 이것만 있으면 바로 종료
         else:
-            # 노트와 동반되거나 일반 종료자가 있을 때 사용하는 2바이트 논터미네이팅 딜레이 ($87)
+            # 노트나 다른 이펙트가 뒤따라올 예정이므로 논-터미네이팅 딜레이($87)로 제일 먼저 삽입
             out.extend(encode_fx(('eff_set_delay', len_fx[1]), is_last=False))
+
+    # 2. Row Delay 커맨드 삽입 (딜레이 설정 직후)
+    if rowdelay_fx:
+        # 이 커맨드가 읽히면 드라이버가 파싱을 멈추고 틱을 넘길 것입니다.
+        # 뒤에 다른 이펙트나 노트가 남았다면 논터미네이팅 플래그($8A)가 부여되어 자연스럽습니다.
+        is_last = (len(other_fx) == 0) and (note is None)
+        out.extend(encode_fx(rowdelay_fx, is_last=is_last))
+
+    # 3. 일반 이펙트 처리 (Row Delay에 의해 파싱이 중단되었다면, 지연된 후에 읽히게 됩니다)
+    if len(other_fx) > 0:
+        for i, f in enumerate(other_fx):
+            is_last = (i == len(other_fx) - 1) and (note is None)
+            out.extend(encode_fx(f, is_last=is_last))
             
-    # 3. 노트 삽입 (항상 맨 마지막에 위치하여 완벽한 종료자 역할 수행)
+    # 4. 노트 삽입 (항상 맨 마지막에 위치하여 최종 종료자 역할 수행)
     if note is not None:
         out.append(note)
         
@@ -354,25 +367,6 @@ def convert_furnace(input_path):
                     ch_cells = [parse_cell(r[6+ch]) for r in rows]
                     b_out = generate_channel_data(ch_cells, is_rhythm=False)
                     f.write("    " + to_byte_str(b_out) + "\n")
-                
-                # f.write(f"@rhythmpat{pat_id}:\\n")
-                # rhythm_cells = []
-                # for r in rows:
-                    # bitmask = 0
-                    # combined_fx = []
-                    # for rc_idx in range(6):
-                        # note, fx = parse_cell(r[9+rc_idx])
-                        # if note is not None and note >= 0x02:
-                            # bitmask |= (1 << rc_idx)
-                        # for efx in fx:
-                            # if not any(cf[0] == efx[0] for cf in combined_fx):
-                                # combined_fx.append(efx)
-                    
-                    # r_note = bitmask if bitmask > 0 else None
-                    # rhythm_cells.append((r_note, combined_fx))
-                    
-                # b_out = generate_channel_data(rhythm_cells, is_rhythm=True)
-                # f.write("    " + to_byte_str(b_out) + "\n\n")
 
         print(f"Generated {song_filename}")
 
