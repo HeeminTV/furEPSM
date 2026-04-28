@@ -8,6 +8,7 @@ furEPSM_zp = $FB ; 5 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
 furEPSM_TEMPOCONSTANT = 3600 ; 3600 = NTSC, 3000 = PAL
+furEPSM_DISABLESSG = 0 ; 1 to disable SSG channels
 
 ; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
 ; (You may want to call `furEPSM_silenceChannels` at RESET as initialization process but it's optional)	
@@ -21,7 +22,7 @@ enum furEPSM_zp
 ende
 
 furEPSM_fmChan = 6
-furEPSM_ssgChan = 3
+furEPSM_ssgChan = 3*(1-furEPSM_DISABLESSG)
 
 furEPSM_allChan = furEPSM_fmChan+furEPSM_ssgChan
 
@@ -153,7 +154,7 @@ furEPSM_play:
 furEPSM_update:
 		BIT furEPSM_songFlag
 		BMI @is_play
-		RTS
+		JMP furEPSM_silenceChannels
 @is_play:
 
 		LDX #furEPSM_allChan-1
@@ -177,7 +178,6 @@ furEPSM_update:
 		STA furEPSM_chanPtrHi,X
 		PLA
 		STA furEPSM_chanPtrLo,X
-
 @no_delay_row:
 		DEX
 		BPL @delayed_row_loop
@@ -187,6 +187,13 @@ furEPSM_update:
 		ORA furEPSM_tempoAcc+0
 		BNE @no_seq_update
 @do_seq_update:
+		BIT furEPSM_songFlag ; check if `eff_end` was occured in previous row
+		BVC @no_stop_command
+		LDA furEPSM_songFlag
+		AND #%00111111
+		STA furEPSM_songFlag
+		JMP furEPSM_silenceChannels
+@no_stop_command:
 
 		LDX #furEPSM_allChan-1
 @seq_loop:
@@ -236,12 +243,13 @@ furEPSM_update:
 		STA furEPSM_tempoAcc+1
 
 @no_seq_update:
-
 		JSR furEPSM_updatePitchFM
 		JSR furEPSM_updateRegFM
+IF (!furEPSM_DISABLESSG)
 		JSR furEPSM_updatePitchSSG
 		JSR furEPSM_updateVolSSG
 		JSR furEPSM_updateRegSSG
+ENDIF
 		
 		LDA furEPSM_tempoAcc+0
 		SEC
@@ -250,12 +258,6 @@ furEPSM_update:
 		LDA furEPSM_tempoAcc+1
 		SBC furEPSM_tempoCnt+1
 		STA furEPSM_tempoAcc+1
-		
-		BIT furEPSM_songFlag
-		BVC @no_stop_command
-		LDA #0
-		STA furEPSM_songFlag
-@no_stop_command:
 		RTS
 
 ; =========================================================================================
@@ -727,30 +729,26 @@ furEPSM_updateRegFM:
 
 		LDA @keyOnRegTbl,X
 		STA $401D
-		PHA ; wait
-		PLA
-		PHA
-		PLA
-		PHA
-		PLA
-		PHA
-		PLA
-		BPL @not_noteoff ; always
+		TXA
+		LDX #5
+@wait:
+		DEX
+		BNE @wait
+		TAX
+		BPL @turn_on_key ; always
 @not_new_note:
 
 		LDA furEPSM_chanStatus,X
 		CMP #furEPSM_CHANSTAT_NOTECUT
-		BNE @not_noteoff
+		BNE @turn_on_key
 ; Note off
-@keyoff:
 		LDA @keyOnRegTbl,X
 		STA $401D
 		BPL @dont_enable_key ; always
-@not_noteoff:
+@turn_on_key:
 		LDA @keyOnRegTbl,X
 		ORA #$F0
 		STA $401D
-
 @dont_enable_key:
 		
 		LDA @A4RegTbl,X
@@ -1010,6 +1008,7 @@ furEPSM_mult:
 		
 ; =========================================================================================
 
+IF (!furEPSM_DISABLESSG)
 furEPSM_updatePitchSSG:
 		LDX #furEPSM_ssgChan-1
 @loop:
@@ -1092,6 +1091,8 @@ furEPSM_updateRegSSG:
 @08RegTbl:
 		.BYTE $08, $09, $0A
 		
+ENDIF
+		
 ; =========================================================================================
 
 furEPSM_fnumTblLo:
@@ -1099,6 +1100,7 @@ furEPSM_fnumTblLo:
 furEPSM_fnumTblHi:
 		.DH $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
 		
+IF (!furEPSM_DISABLESSG)
 furEPSM_ssgPeriodTblLo:
 		.DL $11C1, $10C2, $0FD2, $0EEE, $0E18, $0D4D, $0C8E, $0BDA, $0B2F, $0A8F, $09F7, $0968
 		.DL $08E1, $0861, $07E9, $0777, $070C, $06A7, $0647, $05ED, $0598, $0547, $04FC, $04B4
@@ -1115,5 +1117,6 @@ furEPSM_ssgPeriodTblHi:
 		.DH $011C, $010C, $00FD, $00EF, $00E1, $00D5, $00C9, $00BE, $00B3, $00A9, $009F, $0096
 		.DH $008E, $0086, $007F, $0077, $0071, $006A, $0064, $005F, $0059, $0054, $0050, $004B
 		.DH $0047, $0043, $003F, $003C, $0038, $0035, $0032, $002F
+ENDIF
 
 ; =========================================================================================
