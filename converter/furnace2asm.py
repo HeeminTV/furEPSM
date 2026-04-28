@@ -36,6 +36,8 @@ def parse_cell(cell_str):
             if etype == '0D': fx_list.append(('eff_nextframe', eval_))
             if etype == '0B': fx_list.append(('eff_nextframe', eval_))
             if etype == 'FF': fx_list.append(('eff_end', eval_))
+            if etype == '0F': fx_list.append(('eff_speed', eval_))
+            if etype == 'FD': fx_list.append(('eff_tempo', eval_))
             
     return note, fx_list
 
@@ -57,6 +59,8 @@ def encode_fx(fx, is_last):
     elif fx[0] == 'eff_jumpframe':      return [base | 0x05, fx[1]]
     elif fx[0] == 'eff_end':            return [base | 0x06]
     elif fx[0] == 'eff_set_delay':      return [base | 0x07, fx[1] & 0xFF]
+    elif fx[0] == 'eff_speed':          return [base | 0x08, fx[1]]
+    elif fx[0] == 'eff_tempo':          return [base | 0x09, fx[1]]
     return []
 
 def emit_row(note, fx_list):
@@ -263,11 +267,12 @@ def convert_furnace(input_path):
     while idx < len(lines):
         line = lines[idx].strip()
         if line.startswith('- tick rate:'):
-            current_song = {'speeds': [], 'patlen': 0, 'orders': [], 'patterns': {}}
+            current_song = {'speeds': [6], 'bpm': [150], 'patlen': 0, 'orders': [], 'patterns': {}}
             songs.append(current_song)
         elif line.startswith('- speeds:') and current_song is not None:
-            parts = line.replace('- speeds:', '').strip().split()
-            current_song['speeds'] = [int(p) for p in parts]
+            current_song['speeds'] = int(line.split(': ')[1].split('/')[0])
+        elif line.startswith('- virtual tempo:') and current_song is not None:
+            current_song['bpm'] = int(line.split(': ')[1].split('/')[0])
         elif line.startswith('- pattern length:') and current_song is not None:
             current_song['patlen'] = int(line.split(':')[1].strip())
         elif line == 'orders:' and current_song is not None:
@@ -319,10 +324,10 @@ def convert_furnace(input_path):
         with open(song_filename, 'w') as f:
             f.write(f"furEPSM_song{i:02d}:\n")
             f.write("    .WORD @frames\n")
-            f.write(f"    .BYTE {len(song['orders'])} ; 프레임 개수\n")
-            f.write(f"    .BYTE {song['patlen']} ; 패턴 길이\n")
-            groove = song['speeds'] + [0xFF]
-            f.write("    " + to_byte_str(groove) + " ; groove\n\n")
+            f.write(f"    .BYTE {len(song['orders'])} ; frame count\n")
+            f.write(f"    .BYTE {song['patlen']} ; pattern length\n")
+            f.write(f"    .BYTE {song['speeds']} ; speed\n")
+            f.write(f"    .BYTE {song['bpm']} ; tempo\n")
             
             f.write("@frames:\n")
             for frm_idx in range(len(song['orders'])):

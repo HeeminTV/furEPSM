@@ -6,14 +6,16 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Resource usage
 
-- CPU cycles: Approx. 1800 cycles
-- RAM usage: 114 bytes (+ 5 bytes on zero-page)
-- ROM usage: 1300 bytes
+- CPU cycles: Approx. 1937 cycles
+- RAM usage: 121 bytes (+ 5 bytes on zero-page)
+- ROM usage: 1833 bytes
 
 ## Supported effects
 
-- `0D00` - Next frame
 - `0Bxx` - Jump to frame xx
+- `0D00` - Next frame
+- `0Fxx` - Set speed
+- `FDxx` - Set tempo
 - `FFxx` - Stop song
 
 ## TODO
@@ -22,7 +24,6 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - Add noise support for SSG
 - Add pitch bend effects (portamento, vibrato)
 - Add panning effect
-- Add tempo (BPM) support
 
 ## Major missing features
 

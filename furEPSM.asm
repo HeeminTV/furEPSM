@@ -7,6 +7,8 @@
 furEPSM_zp = $FB ; 5 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
+furEPSM_TEMPOCONSTANT = 3600 ; 3600 = NTSC, 3000 = PAL
+
 ; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
 ; (You may want to call `furEPSM_silenceChannels` at RESET as initialization process but it's optional)	
 
@@ -29,8 +31,12 @@ enum furEPSM_bss
 		furEPSM_currFrame: .dsb 1
 		furEPSM_rows: .dsb 1
 		furEPSM_currRow: .dsb 1
-		furEPSM_groovePtr: .dsb 2
-		furEPSM_groovePos: .dsb 1
+		furEPSM_speed: .dsb 1
+		furEPSM_tempo: .dsb 1
+		furEPSM_tempoDec: .dsb 2
+		furEPSM_tempoAcc: .dsb 2
+		furEPSM_tempoRem: .dsb 2
+		furEPSM_tempoCnt: .dsb 2
 		furEPSM_delayTick: .dsb 1
 		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing, bit 6 = stop command occured
 		furEPSM_jumpFrame: .dsb 1 ; $FF = no jump
@@ -75,13 +81,8 @@ furEPSM_play:
 		TAX
 		LDA furEPSM_header+0,X
 		STA furEPSM_temp_ptr+0
-		CLC
-		ADC #2+1+1
-		STA furEPSM_groovePtr+0
 		LDA furEPSM_header+1,X
 		STA furEPSM_temp_ptr+1
-		ADC #0
-		STA furEPSM_groovePtr+1
 		
 		JSR furEPSM_silenceChannels
 
@@ -98,7 +99,15 @@ furEPSM_play:
 		STA furEPSM_frames
 		
 		LDA (furEPSM_temp_ptr),Y
+		INY
 		STA furEPSM_rows
+		
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_speed
+		
+		LDA (furEPSM_temp_ptr),Y
+		STA furEPSM_tempo
 		
 		LDA #$80
 		STA furEPSM_songFlag
@@ -115,11 +124,17 @@ furEPSM_play:
 		DEX
 		BPL @clear1
 		STX furEPSM_jumpFrame
+		
+		LDA #<furEPSM_TEMPOCONSTANT
+		STA furEPSM_tempoDec+0
+		LDA #>furEPSM_TEMPOCONSTANT
+		STA furEPSM_tempoDec+1
+		
+		JSR furEPSM_calculateSpeed
 
 		LDA #1
 		STA furEPSM_delayTick
 		LDA #0
-		STA furEPSM_groovePos
 		JMP furEPSM_loadFrame
 
 ; =========================================================================================
@@ -135,9 +150,12 @@ furEPSM_update:
 		BMI @is_play
 		RTS
 @is_play:
-		DEC furEPSM_delayTick
+		LDA furEPSM_tempoAcc+1
+		BMI @do_seq_update
+		ORA furEPSM_tempoAcc+0
 		BNE @no_seq_update
-		
+@do_seq_update:
+
 		LDX #furEPSM_allChan-1
 @seq_loop:
 		DEC furEPSM_chanDelay,X
@@ -168,13 +186,38 @@ furEPSM_update:
 @jumpframe:
 		JSR furEPSM_loadFrame
 @no_next_frame:
-		JSR furEPSM_updateSpeed
+		
+		LDA furEPSM_tempoAcc+0
+		CLC
+		ADC furEPSM_tempoDec+0
+		STA furEPSM_tempoAcc+0
+		LDA furEPSM_tempoAcc+1
+		ADC furEPSM_tempoDec+1
+		STA furEPSM_tempoAcc+1
+
+		LDA furEPSM_tempoAcc+0
+		SEC
+		SBC furEPSM_tempoRem+0
+		STA furEPSM_tempoAcc+0
+		LDA furEPSM_tempoAcc+1
+		SBC furEPSM_tempoRem+1
+		STA furEPSM_tempoAcc+1
+
 @no_seq_update:
+
 		JSR furEPSM_updatePitchFM
 		JSR furEPSM_updateRegFM
 		JSR furEPSM_updatePitchSSG
 		JSR furEPSM_updateVolSSG
 		JSR furEPSM_updateRegSSG
+		
+		LDA furEPSM_tempoAcc+0
+		SEC
+		SBC furEPSM_tempoCnt+0
+		STA furEPSM_tempoAcc+0
+		LDA furEPSM_tempoAcc+1
+		SBC furEPSM_tempoCnt+1
+		STA furEPSM_tempoAcc+1
 		
 		BIT furEPSM_songFlag
 		BVC @no_stop_command
@@ -274,25 +317,62 @@ furEPSM_loadFrame:
 		
 ; =========================================================================================
 
-furEPSM_updateSpeed:
-		LDA furEPSM_groovePtr+0
-		STA furEPSM_temp_ptr+0
-		LDA furEPSM_groovePtr+1
-		STA furEPSM_temp_ptr+1
+furEPSM_calculateSpeed:
+		TXA
+		PHA
+		TYA
+		PHA
+
+		lda #0
+		sta furEPSM_tempoRem+0
+		sta furEPSM_tempoRem+1
+		STA furEPSM_tempoAcc+0
+		STA furEPSM_tempoAcc+1
+		STA furEPSM_tempoCnt+1
+
+		LDA furEPSM_tempo
+		STA furEPSM_tempoCnt+0
+		ASL
+		ROL furEPSM_tempoCnt+1
+		CLC
+		ADC furEPSM_tempoCnt+0
+		STA furEPSM_tempoCnt+0
+		LDA furEPSM_tempoCnt+1
+		ADC #0
+		ASL furEPSM_tempoCnt+0
+		ROL
+		ASL furEPSM_tempoCnt+0
+		ROL
+		ASL furEPSM_tempoCnt+0
+		ROL
+		STA furEPSM_tempoCnt+1
+
+		ldx #16
+@divloop:
+		asl furEPSM_tempoCnt+0
+		rol furEPSM_tempoCnt+1
+		LDA #$FF
+		RLA furEPSM_tempoRem+0
+		rol furEPSM_tempoRem+1
+		sec
+		sbc furEPSM_speed
+		tay
+		lda furEPSM_tempoRem+1
+		sbc #0
+		bcc @skip
+
+		sta furEPSM_tempoRem+1
+		sty furEPSM_tempoRem+0
+		inc furEPSM_tempoCnt+0
+@skip:
+		dex
+		bne @divloop	
 		
-		LDY furEPSM_groovePos
-		
-		LDA (furEPSM_temp_ptr),Y
-		CMP #$FF
-		BNE @not_grooveloop
-		LDA #-1
-		STA furEPSM_groovePos
-		LDY #0
-		LDA (furEPSM_temp_ptr),Y
-@not_grooveloop:
-		STA furEPSM_delayTick
-		INC furEPSM_groovePos
-		RTS
+		PLA
+		TAY
+		PLA
+		TAX
+		rts
 		
 ; =========================================================================================
 ;
@@ -392,6 +472,9 @@ furEPSM_updateSeq:
 		.WORD @eff_end				; $86
 		.WORD @eff_set_delay		; $87
 		
+		.WORD @eff_speed			; $88
+		.WORD @eff_tempo			; $89
+		
 ; ------------------------------------------------
 
 @eff_inst:
@@ -473,6 +556,24 @@ furEPSM_updateSeq:
 		STA furEPSM_chanDelay,X
 		JMP @effret
 		
+; ------------------------------------------------
+
+@eff_speed:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_speed
+		JSR furEPSM_calculateSpeed
+		JMP @effret
+
+; ------------------------------------------------
+
+@eff_tempo:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_tempo
+		JSR furEPSM_calculateSpeed
+		JMP @effret
+
 ; =========================================================================================
 
 furEPSM_updatePitchFM:
