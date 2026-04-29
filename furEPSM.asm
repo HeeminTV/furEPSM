@@ -57,6 +57,10 @@ enum furEPSM_bss
 		furEPSM_effDelayDelayedRowPtrHi: .dsb furEPSM_allChan
 ; E5xx
 		furEPSM_effPitchOffset: .dsb furEPSM_allChan
+		
+		furEPSM_fmPanL: .dsb 1 ; xx123456
+		furEPSM_fmPanR: .dsb 1
+		furEPSM_fmPanChanged: .dsb 1
 
 		furEPSM_sChanVolEnvPos: .dsb furEPSM_ssgChan
 		furEPSM_sChanFreqLo: .dsb furEPSM_ssgChan ; final register out
@@ -91,6 +95,7 @@ furEPSM_play:
 		JSR furEPSM_silenceChannels
 
 		LDY #0
+		STY furEPSM_fmPanChanged
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA furEPSM_framesPtr+0
@@ -122,14 +127,19 @@ furEPSM_play:
 		STA furEPSM_chanBaseNote,X
 		STA furEPSM_effDelayTimer,X
 		STA furEPSM_effPitchOffset,X
+
 		LDA #furEPSM_CHANSTAT_NOTECUT
 		STA furEPSM_chanStatus,X
+
 		LDA #$7F
 		STA furEPSM_chanInst,X
 		STA furEPSM_chanVol,X
+
 		DEX
 		BPL @clear1
 		STX furEPSM_jumpFrame
+		STX furEPSM_fmPanL
+		STX furEPSM_fmPanR
 		
 		LDA #<furEPSM_TEMPOCONSTANT
 		STA furEPSM_tempoDec+0
@@ -483,6 +493,7 @@ furEPSM_updateSeq:
 		.DL @eff_vol 				; $81
 		.DL @eff_maxvol				; $82
 		.DL @eff_vibrato			; $83
+
 		.DL @eff_nextframe			; $84
 		.DL @eff_jumpframe			; $85
 		.DL @eff_end				; $86
@@ -492,12 +503,15 @@ furEPSM_updateSeq:
 		.DL @eff_tempo				; $89
 		.DL @eff_rowdelay			; $8A
 		.DL @eff_pitchoffset		; $8B
+		
+		.DL @eff_pan				; $8C
 
 @commandtbl_msb:
 		.DH @eff_inst 				; $80
 		.DH @eff_vol 				; $81
 		.DH @eff_maxvol				; $82
 		.DH @eff_vibrato			; $83
+
 		.DH @eff_nextframe			; $84
 		.DH @eff_jumpframe			; $85
 		.DH @eff_end				; $86
@@ -507,6 +521,8 @@ furEPSM_updateSeq:
 		.DH @eff_tempo				; $89
 		.DH @eff_rowdelay			; $8A
 		.DH @eff_pitchoffset		; $8B
+		
+		.DH @eff_pan				; $8C
 		
 ; ------------------------------------------------
 
@@ -671,6 +687,38 @@ furEPSM_updateSeq:
 		ROR ; bit 7 = c
 		STA furEPSM_effPitchOffset,X
 		JMP @effret
+		
+; ------------------------------------------------
+
+@eff_pan:
+		LDA (furEPSM_temp_ptr),Y ; 2-byte commands **have** to start with `LDA (zp),Y` instruction
+		LDA furEPSM_panORTbl,X
+		ORA furEPSM_fmPanChanged
+		STA furEPSM_fmPanChanged
+
+		LDA furEPSM_fmPanL
+		AND furEPSM_panANDTbl,X
+		STA furEPSM_fmPanL
+		LDA furEPSM_fmPanR
+		AND furEPSM_panANDTbl,X
+		STA furEPSM_fmPanR
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		LSR
+		BCC @no_set_r
+		PHA
+		LDA furEPSM_fmPanR
+		ORA furEPSM_panORTbl,X
+		STA furEPSM_fmPanR
+		PLA
+@no_set_r:
+		LSR
+		BCC @no_set_l
+		LDA furEPSM_fmPanL
+		ORA furEPSM_panORTbl,X
+		STA furEPSM_fmPanL
+@no_set_l:
+		JMP @effret
 
 ; =========================================================================================
 
@@ -683,11 +731,22 @@ furEPSM_updateRegFM:
 		BPL @noinstchange
 		AND #$7F
 		STA furEPSM_chanInst,X
+		LDA furEPSM_fmPanChanged ; force panning update
+		ORA furEPSM_panORTbl,X
+		STA furEPSM_fmPanChanged
 		LDA furEPSM_chanVol,X ; force volume update
 		ORA #$80
 		STA furEPSM_chanVol,X
 		JSR furEPSM_uploadFMPatch
 @noinstchange:
+		LDA furEPSM_fmPanChanged
+		AND furEPSM_panORTbl,X
+		BEQ @nopanchange
+		LDA furEPSM_fmPanChanged
+		AND furEPSM_panANDTbl,X
+		STA furEPSM_fmPanChanged
+		JSR furEPSM_updatePan
+@nopanchange:
 		LDA furEPSM_chanVol,X
 		BPL @novolchange
 		AND #$7F
@@ -887,13 +946,7 @@ ENDM
 furEPSM_uploadFMPatch:
 		TYA
 		PHA
-		LDA furEPSM_chanInst,X
-		ASL
-		TAY
-		LDA furEPSM_instptr+0,Y
-		STA furEPSM_temp_ptr+0
-		LDA furEPSM_instptr+1,Y
-		STA furEPSM_temp_ptr+1
+		JSR furEPSM_loadInstPtr
 
 		TXA
 		PHA
@@ -905,6 +958,30 @@ furEPSM_uploadFMPatch:
 @secondbank:
 		AXS #3 ; cap the X range to 0-2
 		furEPSM_loadEPSMPatch +2
+		
+furEPSM_updatePan:
+		STY furEPSM_temp_ptr2+0 ; y saver
+		
+		LDA furEPSM_B4RegTbl,X
+		STA $401C,Y
+
+		JSR furEPSM_loadInstPtr
+		
+		LDA furEPSM_fmPanR
+		AND furEPSM_panORTbl,X
+		CMP #1
+		ROR furEPSM_temp ; R???????
+		LDA furEPSM_fmPanL
+		AND furEPSM_panORTbl,X
+		CMP #1
+		ROR furEPSM_temp ; LR??????
+		LDA furEPSM_temp
+		AND #$C0 ; LR000000
+		LDY #1
+		ORA (furEPSM_temp_ptr),Y
+		LDY furEPSM_temp_ptr2+0
+		STA $401D,Y
+		RTS
 
 MACRO furEPSM_saveNewTL op
 		LDA furEPSM_40RegTbl,X
@@ -929,13 +1006,7 @@ ENDM
 furEPSM_updateTL:
 		STY furEPSM_temp ; y saver
 		
-		LDA furEPSM_chanInst,X
-		ASL
-		TAY
-		LDA furEPSM_instptr+0,Y
-		STA furEPSM_temp_ptr+0
-		LDA furEPSM_instptr+1,Y
-		STA furEPSM_temp_ptr+1
+		JSR furEPSM_loadInstPtr
 		
 		LDY #0
 		LDA (furEPSM_temp_ptr),Y
@@ -978,7 +1049,7 @@ furEPSM_B0RegTbl:
 		.BYTE $B0, $B1, $B2
 		
 furEPSM_B4RegTbl:
-		.BYTE $B4, $B5, $B6
+		.BYTE $B4, $B5, $B6, $B4, $B5, $B6
 		
 ; =========================================================================================
 ;
@@ -1104,8 +1175,26 @@ furEPSM_updateRegSSG:
 @08RegTbl:
 		.BYTE $08, $09, $0A
 ENDIF
-		
+
 ; =========================================================================================
+		
+furEPSM_loadInstPtr:
+		LDA furEPSM_chanInst,X
+		ASL
+		TAY
+		LDA furEPSM_instptr+0,Y
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_instptr+1,Y
+		STA furEPSM_temp_ptr+1
+		RTS
+
+; =========================================================================================
+
+furEPSM_panANDTbl:
+		.BYTE %00011111, %00101111, %00110111, %00111011, %00111101, %00111110
+		
+furEPSM_panORTbl:
+		.BYTE %00100000, %00010000, %00001000, %00000100, %00000010, %00000001
 
 furEPSM_fnumTblLo:
 		.DL $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D

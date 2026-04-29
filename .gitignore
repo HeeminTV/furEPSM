@@ -8,8 +8,7 @@ build.bat
 converter/furnace2asm_fixattempt1.py
 *.mlb
 *.lua
-converter/*header.asm
-converter/*song*
+converter/*.asm
 *.fur
 
 !LICENCE.txt

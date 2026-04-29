@@ -40,6 +40,12 @@ def parse_cell(cell_str):
             if etype == 'FD': fx_list.append(('eff_tempo', eval_))
             if etype == 'ED': fx_list.append(('eff_rowdelay', eval_))
             if etype == 'E5': fx_list.append(('eff_pitchoffset', eval_))
+            if etype == '80': fx_list.append(('eff_pan',
+            1 if eval_ == 0xFF else 2 if eval_ == 0x00 else 3
+            ))
+            if etype == '08': fx_list.append(('eff_pan',
+            3 if eval_ == 0x00 else (((eval_&0xF0)!=0)<<1)|((eval_&0x0F)!=0)
+            ))
             
     return note, fx_list
 
@@ -65,6 +71,7 @@ def encode_fx(fx, is_last):
     elif fx[0] == 'eff_tempo':          return [base | 0x09, fx[1]]
     elif fx[0] == 'eff_rowdelay':       return [base | 0x0A, fx[1]]
     elif fx[0] == 'eff_pitchoffset':    return [base | 0x0B, fx[1]]
+    elif fx[0] == 'eff_pan':    return [base | 0x0C, fx[1]]
     return []
 
 def emit_row(note, fx_list):
@@ -240,7 +247,7 @@ def convert_furnace(input_path):
             
             inst_bytes = []
             inst_bytes.append(alg | (fb << 3))
-            inst_bytes.append(fms | (ams << 4))
+            inst_bytes.append((fms | (ams << 4)&0x3F)
             for op in ops:
                 b1 = (op.get('DT', 0) << 4) | op.get('MULT', 0)
                 b2 = op.get('TL', 0)
