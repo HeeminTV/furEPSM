@@ -8,7 +8,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 - CPU cycles: Approx. 2200 cycles
 - RAM usage: 141 bytes (+ 5 bytes on zero-page)
-- ROM usage: 1940 bytes
+- ROM usage: 2146 bytes
 
 ## Supported effects
 

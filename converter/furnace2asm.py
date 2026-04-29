@@ -347,7 +347,7 @@ def convert_furnace(input_path):
             f.write(f"furEPSM_song{i:02d}:\n")
             f.write("    .WORD @frames\n")
             f.write(f"    .BYTE {len(song['orders'])} ; frame count\n")
-            f.write(f"    .BYTE {song['patlen']-1} ; pattern length - 1\n")
+            f.write(f"    .BYTE {song['patlen']} ; pattern length\n")
             f.write(f"    .BYTE {song['speeds']} ; speed\n")
             f.write(f"    .BYTE {song['bpm']} ; tempo\n")
             

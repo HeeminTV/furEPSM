@@ -38,7 +38,6 @@ enum furEPSM_bss
 		furEPSM_tempoAcc: .dsb 2
 		furEPSM_tempoCnt: .dsb 2
 		furEPSM_tempoRem: .dsb 1
-		furEPSM_delayTick: .dsb 1
 		furEPSM_songFlag: .dsb 1 ; bit 7 = is song playing, bit 6 = stop command occured
 		furEPSM_jumpFrame: .dsb 1 ; $FF = no jump
 
@@ -118,7 +117,9 @@ furEPSM_play:
 		LDA (furEPSM_temp_ptr),Y
 		STA furEPSM_tempo
 		
-		LDA #$80
+		LDA furEPSM_songFlag
+		AND #$3F
+		ORA #$80
 		STA furEPSM_songFlag
 
 		LDX #furEPSM_allChan-1
@@ -137,6 +138,7 @@ furEPSM_play:
 
 		DEX
 		BPL @clear1
+
 		STX furEPSM_jumpFrame
 		STX furEPSM_fmPanL
 		STX furEPSM_fmPanR
@@ -148,8 +150,6 @@ furEPSM_play:
 		
 		JSR furEPSM_calculateSpeed+2
 
-		LDA #1
-		STA furEPSM_delayTick
 		LDA #0
 		JMP furEPSM_loadFrame
 
@@ -221,8 +221,7 @@ furEPSM_update:
 		LDA furEPSM_jumpFrame
 		BCC @jumpframe ; always
 @no_jumpframe_specified:
-		TXA
-		DCP furEPSM_rowCount
+		DEC furEPSM_rowCount
 		BNE @no_next_frame
 		INC furEPSM_currFrame
 		LDA furEPSM_currFrame
@@ -310,7 +309,7 @@ furEPSM_silenceChannels:
 		LDA #$80
 		STA $401D
 		RTS
-		
+
 ; =========================================================================================
 
 furEPSM_loadFrame:
