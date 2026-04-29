@@ -30,8 +30,8 @@ enum furEPSM_bss
 		furEPSM_framesPtr: .dsb 2
 		furEPSM_frames: .dsb 1
 		furEPSM_currFrame: .dsb 1
-		furEPSM_rows: .dsb 1
-		furEPSM_currRow: .dsb 1
+		furEPSM_rowCount: .dsb 1
+		furEPSM_rowCountReload: .dsb 1
 		furEPSM_speed: .dsb 1
 		furEPSM_tempo: .dsb 1
 		furEPSM_tempoDec: .dsb 2
@@ -109,7 +109,7 @@ furEPSM_play:
 		
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		STA furEPSM_rows
+		STA furEPSM_rowCountReload
 		
 		LDA (furEPSM_temp_ptr),Y
 		INY
@@ -166,7 +166,7 @@ furEPSM_update:
 		BMI @is_play
 		JMP furEPSM_silenceChannels
 @is_play:
-
+; Process delayed rows
 		LDX #furEPSM_allChan-1
 @delayed_row_loop:
 		LDA furEPSM_effDelayTimer,X
@@ -216,21 +216,19 @@ furEPSM_update:
 		DEX
 		BPL @seq_loop
 		
-		CPX furEPSM_jumpFrame
+		CPX furEPSM_jumpFrame ; if furEPSM_jumpFrame == $FF
 		BEQ @no_jumpframe_specified
 		LDA furEPSM_jumpFrame
 		BCC @jumpframe ; always
 @no_jumpframe_specified:
-		
-		INC furEPSM_currRow
-		LDA furEPSM_currRow
-		CMP furEPSM_rows
+		TXA
+		DCP furEPSM_rowCount
 		BNE @no_next_frame
 		INC furEPSM_currFrame
 		LDA furEPSM_currFrame
 @jumpframe:
 		CMP furEPSM_frames
-		BNE @no_frame_wrap
+		BCC @no_frame_wrap
 		LDA #0
 @no_frame_wrap:
 		JSR furEPSM_loadFrame
@@ -239,16 +237,16 @@ furEPSM_update:
 		LDA furEPSM_tempoAcc+0
 		CLC
 		ADC furEPSM_tempoDec+0
-		STA furEPSM_tempoAcc+0
+		STA furEPSM_temp_ptr+0
 		LDA furEPSM_tempoAcc+1
 		ADC furEPSM_tempoDec+1
-		STA furEPSM_tempoAcc+1
+		STA furEPSM_temp_ptr+1
 
-		LDA furEPSM_tempoAcc+0
+		LDA furEPSM_temp_ptr+0
 		SEC
 		SBC furEPSM_tempoRem
 		STA furEPSM_tempoAcc+0
-		LDA furEPSM_tempoAcc+1
+		LDA furEPSM_temp_ptr+1
 		SBC #0
 		STA furEPSM_tempoAcc+1
 
@@ -325,6 +323,9 @@ furEPSM_loadFrame:
 		STA furEPSM_temp_ptr+0
 		LDA furEPSM_framesPtr+1
 		STA furEPSM_temp_ptr+1
+		
+		LDA furEPSM_rowCountReload
+		STA furEPSM_rowCount
 
 		LDA (furEPSM_temp_ptr),Y
 		INY
@@ -335,7 +336,6 @@ furEPSM_loadFrame:
 		STA furEPSM_temp_ptr+0
 
 		LDX #0 
-		STX furEPSM_currRow
 		LDY #0
 @loop1:
 		LDA (furEPSM_temp_ptr),Y

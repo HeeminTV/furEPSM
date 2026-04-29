@@ -247,7 +247,7 @@ def convert_furnace(input_path):
             
             inst_bytes = []
             inst_bytes.append(alg | (fb << 3))
-            inst_bytes.append((fms | (ams << 4)&0x3F)
+            inst_bytes.append((fms | (ams << 4)&0x3F))
             for op in ops:
                 b1 = (op.get('DT', 0) << 4) | op.get('MULT', 0)
                 b2 = op.get('TL', 0)
@@ -347,7 +347,7 @@ def convert_furnace(input_path):
             f.write(f"furEPSM_song{i:02d}:\n")
             f.write("    .WORD @frames\n")
             f.write(f"    .BYTE {len(song['orders'])} ; frame count\n")
-            f.write(f"    .BYTE {song['patlen']} ; pattern length\n")
+            f.write(f"    .BYTE {song['patlen']-1} ; pattern length - 1\n")
             f.write(f"    .BYTE {song['speeds']} ; speed\n")
             f.write(f"    .BYTE {song['bpm']} ; tempo\n")
             
