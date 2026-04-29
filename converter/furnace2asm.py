@@ -39,6 +39,7 @@ def parse_cell(cell_str):
             if etype == '0F': fx_list.append(('eff_speed', eval_))
             if etype == 'FD': fx_list.append(('eff_tempo', eval_))
             if etype == 'ED': fx_list.append(('eff_rowdelay', eval_))
+            if etype == 'E5': fx_list.append(('eff_pitchoffset', eval_))
             
     return note, fx_list
 
@@ -63,6 +64,7 @@ def encode_fx(fx, is_last):
     elif fx[0] == 'eff_speed':          return [base | 0x08, fx[1]]
     elif fx[0] == 'eff_tempo':          return [base | 0x09, fx[1]]
     elif fx[0] == 'eff_rowdelay':       return [base | 0x0A, fx[1]]
+    elif fx[0] == 'eff_pitchoffset':    return [base | 0x0B, fx[1]]
     return []
 
 def emit_row(note, fx_list):

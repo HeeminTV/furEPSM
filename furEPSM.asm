@@ -18,7 +18,7 @@ furEPSM_DISABLESSG = 0 ; 1 to disable SSG channels
 enum furEPSM_zp
 		furEPSM_temp_ptr: .dsb 2
 		furEPSM_temp_ptr2: .dsb 2
-		furEPSM_temp0: .dsb 1
+		furEPSM_temp: .dsb 1
 ende
 
 furEPSM_fmChan = 6
@@ -51,13 +51,12 @@ enum furEPSM_bss
 		furEPSM_chanInst: .dsb furEPSM_allChan ; bit 7 = instrument changed flag
 		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
 		
+; EDxx
 		furEPSM_effDelayTimer: .dsb furEPSM_allChan ; $00 = no delay (obviously lol)
 		furEPSM_effDelayDelayedRowPtrLo: .dsb furEPSM_allChan
 		furEPSM_effDelayDelayedRowPtrHi: .dsb furEPSM_allChan
-
-		furEPSM_fChanFLo: .dsb furEPSM_fmChan ; final register out
-		furEPSM_fChanFHi: .dsb furEPSM_fmChan
-		furEPSM_fChanOct: .dsb furEPSM_fmChan
+; E5xx
+		furEPSM_effPitchOffset: .dsb furEPSM_allChan
 
 		furEPSM_sChanVolEnvPos: .dsb furEPSM_ssgChan
 		furEPSM_sChanFreqLo: .dsb furEPSM_ssgChan ; final register out
@@ -122,6 +121,7 @@ furEPSM_play:
 		LDA #0
 		STA furEPSM_chanBaseNote,X
 		STA furEPSM_effDelayTimer,X
+		STA furEPSM_effPitchOffset,X
 		LDA #furEPSM_CHANSTAT_NOTECUT
 		STA furEPSM_chanStatus,X
 		LDA #$7F
@@ -243,7 +243,6 @@ furEPSM_update:
 		STA furEPSM_tempoAcc+1
 
 @no_seq_update:
-		JSR furEPSM_updatePitchFM
 		JSR furEPSM_updateRegFM
 IF (!furEPSM_DISABLESSG)
 		JSR furEPSM_updatePitchSSG
@@ -352,7 +351,7 @@ furEPSM_loadFrame:
 ; =========================================================================================
 
 furEPSM_calculateSpeed:
-		STX furEPSM_temp0
+		STX furEPSM_temp
 
 		LDA furEPSM_tempo
 		STA furEPSM_tempoCnt+0
@@ -389,7 +388,7 @@ furEPSM_calculateSpeed:
 		BNE @divloop
 		STA furEPSM_tempoRem
 
-		LDX furEPSM_temp0
+		LDX furEPSM_temp
 		RTS
 		
 ; =========================================================================================
@@ -426,13 +425,13 @@ furEPSM_updateSeq:
 
 		PHA
 		AND #$1F
-		STY furEPSM_temp0
+		STY furEPSM_temp
 		TAY
 		LDA @commandtbl_lsb,Y
 		STA furEPSM_temp_ptr2+0
 		LDA @commandtbl_msb,Y
 		STA furEPSM_temp_ptr2+1
-		LDY furEPSM_temp0
+		LDY furEPSM_temp
 		JMP (furEPSM_temp_ptr2)
 
 @effret:
@@ -492,6 +491,7 @@ furEPSM_updateSeq:
 		.DL @eff_speed				; $88
 		.DL @eff_tempo				; $89
 		.DL @eff_rowdelay			; $8A
+		.DL @eff_pitchoffset		; $8B
 
 @commandtbl_msb:
 		.DH @eff_inst 				; $80
@@ -506,6 +506,7 @@ furEPSM_updateSeq:
 		.DH @eff_speed				; $88
 		.DH @eff_tempo				; $89
 		.DH @eff_rowdelay			; $8A
+		.DH @eff_pitchoffset		; $8B
 		
 ; ------------------------------------------------
 
@@ -627,9 +628,9 @@ furEPSM_updateSeq:
 
 @find_next_row: ; has to find next row's location. kinda like small interpritter.
 		LDA (furEPSM_temp_ptr),Y
-		PHP
+		STA furEPSM_temp
 		INY
-		PLP
+		LDA furEPSM_temp
 		BPL @found ; note
 		CMP #$E0
 		BCS @found ; 1-byte delay
@@ -638,7 +639,7 @@ furEPSM_updateSeq:
 ; otherwise it should figure out if it's one byte command or two bytes
 		PHA
 		AND #$1F
-		STY furEPSM_temp0
+		STY furEPSM_temp
 		TAY
 		LDA @commandtbl_lsb,Y
 		STA furEPSM_temp_ptr2+0
@@ -646,7 +647,7 @@ furEPSM_updateSeq:
 		STA furEPSM_temp_ptr2+1
 		LDY #0
 		LDA (furEPSM_temp_ptr2),Y
-		LDY furEPSM_temp0
+		LDY furEPSM_temp
 		CMP #$B1 ; check if it's `LDA (zp),Y`, which indicates two byte command.
 		BNE @not_twobyte
 		INY
@@ -656,46 +657,22 @@ furEPSM_updateSeq:
 		BCC @find_next_row ; otherwise read next command
 @found:
 		JMP @sequpdatedone
+		
+; ------------------------------------------------
+		
+@eff_pitchoffset:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		SEC
+		SBC #$80
+		PHA
+		ASL ; msb -> c
+		PLA
+		ROR ; bit 7 = c
+		STA furEPSM_effPitchOffset,X
+		JMP @effret
 
 ; =========================================================================================
-
-furEPSM_updatePitchFM:
-		LDX #furEPSM_fmChan-1
-@getbasefreq:
-		LDA furEPSM_chanBaseNote,X
-		CLC
-		ADC #9
-		LDY #0
-@getmod:
-		CMP #12
-		BCC @ret
-		SBC #12
-		INY
-		BNE @getmod ; always
-@ret:
-		STY furEPSM_temp0
-		TAY
-		LDA furEPSM_fnumTblLo,Y
-		STA furEPSM_fChanFLo,X
-		LDA furEPSM_fnumTblHi,Y
-		STA furEPSM_fChanFHi,X
-		LDA furEPSM_temp0
-		STA furEPSM_fChanOct,X
-
-		DEX
-		BPL @getbasefreq
-		
-		; LDX #furEPSM_allChan-1
-; @applyfreq:
-		; LDA furEPSM_fChanBaseFLo,X
-		; STA furEPSM_fChanFLo,X
-		; LDA furEPSM_fChanBaseFHi,X
-		; STA furEPSM_fChanFHi,X
-		; LDA furEPSM_fChanBaseOct,X
-		; STA furEPSM_fChanOct,X
-		; DEX
-		; BPL @applyfreq
-		RTS
 
 furEPSM_updateRegFM:
 		LDX #furEPSM_fmChan-1
@@ -744,29 +721,62 @@ furEPSM_updateRegFM:
 ; Note off
 		LDA @keyOnRegTbl,X
 		STA $401D
-		BPL @dont_enable_key ; always
+		BPL @update_pitch ; always
 @turn_on_key:
 		LDA @keyOnRegTbl,X
 		ORA #$F0
 		STA $401D
-@dont_enable_key:
-		
+@update_pitch:
+; Update pitch
 		LDA @A4RegTbl,X
 		STA $401C,Y
-		LDA furEPSM_fChanOct,X
+		STY furEPSM_temp_ptr+0 ; save Y
+
+		LDA furEPSM_effPitchOffset,X
+		AND #$80
+		TAY
+		LDA @getmod-1,Y
+		STA furEPSM_temp_ptr+1 ; top 3 bits of furEPSM_effPitchOffset
+
+		LDA furEPSM_chanBaseNote,X
+		CLC
+		ADC #9
+		LDY #0
+@getmod:
+		CMP #12
+		BCC @ret
+		SBC #12
+		INY
+		BNE @getmod ; always
+@ret:
+		STY furEPSM_temp_ptr2+0 ; block
+		TAY
+
+		LDA furEPSM_fnumTblLo,Y
+		ADC furEPSM_effPitchOffset,X ; carry is clear
+		STA furEPSM_temp_ptr2+1 ; fnum Low
+		LDA furEPSM_fnumTblHi,Y
+		ADC furEPSM_temp_ptr+1 ; top 3 bits of furEPSM_effPitchOffset
+		AND #7
+		STA furEPSM_temp
+		LDA furEPSM_temp_ptr2+0 ; block
 		ASL
 		ASL
 		ASL
-		ORA furEPSM_fChanFHi,X
+		ORA furEPSM_temp
+		LDY furEPSM_temp_ptr+0 ; restore Y
 		STA $401D,Y
 		
 		LDA @A0RegTbl,X
 		STA $401C,Y
-		LDA furEPSM_fChanFLo,X
+		LDA furEPSM_temp_ptr2+1 ; fnum Low
 		STA $401D,Y
 		
 		DEX
-		BPL @loop
+		; BPL @loop
+		BMI @loopend
+		JMP @loop
+@loopend:
 		RTS
 
 @chanregoffsettbl:
@@ -779,6 +789,9 @@ furEPSM_updateRegFM:
 		.BYTE $A0, $A1, $A2, $A0, $A1, $A2	
 @A4RegTbl:
 		.BYTE $A4, $A5, $A6, $A4, $A5, $A6
+
+.org @getmod-1+128
+		.BYTE $07
 
 ; =========================================================================================
 ;
@@ -793,7 +806,7 @@ furEPSM_updateRegFM:
 
 MACRO furEPSM_loadEPSMPatch regoffset
 		LDY #0
-		STY furEPSM_temp0
+		STY furEPSM_temp
 
 		LDA furEPSM_B0RegTbl,X
 		STA $401C+regoffset
@@ -811,57 +824,57 @@ MACRO furEPSM_loadEPSMPatch regoffset
 		CLC
 @oploop:
 		LDA furEPSM_30RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
 		LDA furEPSM_40RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
 		LDA furEPSM_50RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
 		LDA furEPSM_60RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
 		LDA furEPSM_70RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
 		LDA furEPSM_80RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
 		LDA furEPSM_90RegTbl,X
-		ADC furEPSM_temp0
+		ADC furEPSM_temp
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
 		
-		LDA furEPSM_temp0
+		LDA furEPSM_temp
 		ADC #4
-		STA furEPSM_temp0
+		STA furEPSM_temp
 		CMP #16
 		BNE @oploop
 		PLA
@@ -909,12 +922,12 @@ MACRO furEPSM_saveNewTL op
 		ASL furEPSM_temp_ptr2+1
 		ROL
 		EOR #$7F
-		LDY furEPSM_temp0
+		LDY furEPSM_temp
 		STA $401D,Y
 ENDM
 
 furEPSM_updateTL:
-		STY furEPSM_temp0 ; y saver
+		STY furEPSM_temp ; y saver
 		
 		LDA furEPSM_chanInst,X
 		ASL
@@ -926,7 +939,7 @@ furEPSM_updateTL:
 		
 		LDY #0
 		LDA (furEPSM_temp_ptr),Y
-		LDY furEPSM_temp0
+		LDY furEPSM_temp
 		AND #7 ; ALG
 		; 0, 1, 2, 3 	= OP4 only
 		; 4 			= OP2, OP4
@@ -1053,7 +1066,7 @@ furEPSM_updateVolSSG:
 		BCC @skip_volenvloop
 		SBC #16 ; carry is set
 		STA furEPSM_sChanVolEnvPos,X
-		BCS @volenvloopdone
+		BCS @volenvloopdone ; always
 @skip_volenvloop:
 		INC furEPSM_sChanVolEnvPos,X
 @volenvloopdone:
@@ -1090,7 +1103,6 @@ furEPSM_updateRegSSG:
 		.BYTE $01, $03, $05
 @08RegTbl:
 		.BYTE $08, $09, $0A
-		
 ENDIF
 		
 ; =========================================================================================

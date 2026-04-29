@@ -6,8 +6,8 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Resource usage
 
-- CPU cycles: Approx. 2085 cycles
-- RAM usage: 147 bytes (+ 5 bytes on zero-page)
+- CPU cycles: Approx. 2120 cycles
+- RAM usage: 138 bytes (+ 5 bytes on zero-page)
 - ROM usage: 1928 bytes
 
 ## Supported effects
@@ -15,6 +15,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - `0Bxx` - Jump to frame xx
 - `0D00` - Next frame
 - `0Fxx` - Set speed
+- `E5xx` - Set pitch offset (pseudo implementation)
 - `EDxx` - Note delay (only one at once)
 - `FDxx` - Set tempo
 - `FFxx` - Stop song
