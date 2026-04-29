@@ -251,13 +251,6 @@ furEPSM_update:
 		STA furEPSM_tempoAcc+1
 
 @no_seq_update:
-		JSR furEPSM_updateRegFM
-IF (!furEPSM_DISABLESSG)
-		JSR furEPSM_updatePitchSSG
-		JSR furEPSM_updateVolSSG
-		JSR furEPSM_updateRegSSG
-ENDIF
-		
 		LDA furEPSM_tempoAcc+0
 		SEC
 		SBC furEPSM_tempoCnt+0
@@ -265,7 +258,13 @@ ENDIF
 		LDA furEPSM_tempoAcc+1
 		SBC furEPSM_tempoCnt+1
 		STA furEPSM_tempoAcc+1
-		RTS
+
+IF (!furEPSM_DISABLESSG)
+		JSR furEPSM_updatePitchSSG
+		JSR furEPSM_updateVolSSG
+		JSR furEPSM_updateRegSSG
+ENDIF
+		JMP furEPSM_updateRegFM
 
 ; =========================================================================================
 ;
@@ -764,6 +763,7 @@ furEPSM_updateRegFM:
 		STA furEPSM_chanStatus,X
 
 		LDA @keyOnRegTbl,X
+		AND #$0F
 		STA $401D
 		TXA
 		LDX #5
@@ -772,18 +772,17 @@ furEPSM_updateRegFM:
 		BNE @wait
 		TAX
 		BPL @turn_on_key ; always
-@not_new_note:
 
-		LDA furEPSM_chanStatus,X
+@not_new_note:
 		CMP #furEPSM_CHANSTAT_NOTECUT
 		BNE @turn_on_key
 ; Note off
 		LDA @keyOnRegTbl,X
+		AND #$0F
 		STA $401D
 		BPL @update_pitch ; always
 @turn_on_key:
 		LDA @keyOnRegTbl,X
-		ORA #$F0
 		STA $401D
 @update_pitch:
 ; Update pitch
@@ -804,7 +803,7 @@ furEPSM_updateRegFM:
 @getmod:
 		CMP #12
 		BCC @ret
-		SBC #12
+		SBC #12 ; carry is set
 		INY
 		BNE @getmod ; always
 @ret:
@@ -832,7 +831,6 @@ furEPSM_updateRegFM:
 		STA $401D,Y
 		
 		DEX
-		; BPL @loop
 		BMI @loopend
 		JMP @loop
 @loopend:
@@ -842,7 +840,7 @@ furEPSM_updateRegFM:
 		.BYTE 0, 0, 0, 2, 2, 2
 		
 @keyOnRegTbl:
-		.BYTE $00, $01, $02, $04, $05, $06
+		.BYTE $F0, $F1, $F2, $F4, $F5, $F6
 		
 @A0RegTbl:
 		.BYTE $A0, $A1, $A2, $A0, $A1, $A2	
@@ -877,7 +875,6 @@ MACRO furEPSM_loadEPSMPatch regoffset
 		STA $401C+regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		ORA #$C0 ; TODO : panning
 		STA $401D+regoffset
 		
 		CLC
@@ -992,7 +989,6 @@ MACRO furEPSM_saveNewTL op
 		LDY #2+(7*(((op-1)>>1)|(((op-1)<< 1)&2)))+1
 		LDA (furEPSM_temp_ptr),Y
 		EOR #$7F
-		CLC
 		ADC #1
 		LDY furEPSM_chanVol,X
 		JSR furEPSM_mult
@@ -1197,9 +1193,9 @@ furEPSM_panORTbl:
 		.BYTE %00100000, %00010000, %00001000, %00000100, %00000010, %00000001
 
 furEPSM_fnumTblLo:
-		.DL $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
+		.DL 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
 furEPSM_fnumTblHi:
-		.DH $269, $28E, $2B5, $2DE, $30A, $338, $369, $39D, $3D4, $40E, $44C, $48D
+		.DH 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
 		
 IF (!furEPSM_DISABLESSG)
 furEPSM_ssgPeriodTblLo:
