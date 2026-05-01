@@ -33,6 +33,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Major missing features
 
+- Grooves
 - Pitch related effects
 - SSG macros except for volume
 - SSG macro release
@@ -40,6 +41,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Non-goals (lowest priority)
 
+- Grooves
 - Arpeggio effect
 - FM macros
 - SSG PCM streaming
@@ -47,9 +49,17 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Usage
 
-The driver is particularly intended to use with bankswitched songs. You should write your own bankswitching logic. (a music driver will have no idea how your bankswitching system works) Just the update routine has to be called with the correct bank set right before.
-
 The bytecode converter accepts YM2608 (no CSM or exp 3CH) Furnace .txt export and generates one header file and track sequence data for each subsongs.
+
+Make sure to use "one speed" + "Virtual Tempo" scheme for "Speed" instead of "groove pattern" or "two (alternating) speeds" mode.
+
+![](images\opna.png)
+
+The "Pitch linearity" in "Compatibility Flags" should be "None".
+
+![](images\pitch_linearity.png)
+
+The driver is particularly intended to use with bankswitched songs. You should write your own bankswitching logic. (a music driver will have no idea how your bankswitching system works) Just the update routine has to be called with the correct bank set right before.
 
 ### Including in your game
 

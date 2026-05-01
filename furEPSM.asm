@@ -709,8 +709,8 @@ ENDIF
 
 @eff_pan:
 		LDA (furEPSM_temp_ptr),Y ; 2-byte commands **have** to start with `LDA (zp),Y` instruction
-		LDA furEPSM_panORTbl,X
-		ORA furEPSM_fmPanChanged
+		LDA furEPSM_fmPanChanged
+		ORA furEPSM_panORTbl,X
 		STA furEPSM_fmPanChanged
 
 		LDA furEPSM_fmPanL
@@ -753,7 +753,7 @@ furEPSM_updateRegFM:
 @loop:
 		LDY @chanregoffsettbl,X ; $401C,$401D / $401E,$401F
 
-		LDA furEPSM_chanInst,X
+		LDA furEPSM_chanInst,X ; update FM patch
 		BPL @noinstchange
 		AND #$7F
 		STA furEPSM_chanInst,X
@@ -765,7 +765,7 @@ furEPSM_updateRegFM:
 		STA furEPSM_chanVol,X
 		JSR furEPSM_uploadFMPatch
 @noinstchange:
-		LDA furEPSM_fmPanChanged
+		LDA furEPSM_fmPanChanged ; update panning
 		AND furEPSM_panORTbl,X
 		BEQ @nopanchange
 		LDA furEPSM_fmPanChanged
@@ -773,7 +773,7 @@ furEPSM_updateRegFM:
 		STA furEPSM_fmPanChanged
 		JSR furEPSM_updatePan
 @nopanchange:
-		LDA furEPSM_chanVol,X
+		LDA furEPSM_chanVol,X ; update volume
 		BPL @novolchange
 		AND #$7F
 		STA furEPSM_chanVol,X
@@ -903,8 +903,7 @@ MACRO furEPSM_loadEPSMPatch regoffset
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA $401D+regoffset
-		
-		CLC
+
 @oploop:
 		LDA furEPSM_30RegTbl,X
 		ADC furEPSM_temp
@@ -962,14 +961,12 @@ MACRO furEPSM_loadEPSMPatch regoffset
 		BNE @oploop
 		PLA
 		TAX
-		PLA
-		TAY
+		LDY furEPSM_temp_ptr2+0
 		RTS
 ENDM
 		
 furEPSM_uploadFMPatch:
-		TYA
-		PHA
+		STY furEPSM_temp_ptr2+0 ; Y saver
 		JSR furEPSM_loadInstPtr
 
 		TXA
@@ -981,6 +978,7 @@ furEPSM_uploadFMPatch:
 		furEPSM_loadEPSMPatch 0
 @secondbank:
 		AXS #3 ; cap the X range to 0-2
+		CLC
 		furEPSM_loadEPSMPatch +2
 		
 furEPSM_updatePan:
