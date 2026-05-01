@@ -27,12 +27,14 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## TODO
 
+- Implement effects in SSG
 - Add rhythm kit support
 - Add noise support for SSG
 - Add pitch bend effects (portamento, vibrato)
 
 ## Major missing features
 
+- Effects in SSG channels
 - Grooves
 - Pitch related effects
 - SSG macros except for volume
@@ -49,7 +51,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Usage
 
-The [bytecode converter](converter/furnace2asm.py) accepts YM2608 (no CSM or exp 3CH) Furnace .txt export and generates one header file and track sequence data for each subsongs.
+The [bytecode converter](converter/furnace2asm.py) accepts [YM2608](https://github.com/tildearrow/furnace/blob/master/doc/7-systems/ym2608.md) (no CSM or exp 3CH) Furnace text export and generates one header file and track sequence data for each subsongs.
 
 ![](images/asmfiles.png)
 
@@ -63,9 +65,15 @@ The driver is particularly intended to use with bankswitched songs. You should w
 
 ### Including in your game
 
-Obviously you would want to find a bank for the driver itself first. (Fixed bank works too anyway)
+The driver is written to use with [ASM6f NES/Famicom 6502 assembler](https://github.com/freem/asm6f).
 
-Include the driver `.asm` source using `.include` directive. Don't forget to `.include` the music header file **in the same bank** as well.
+The three major files you should include are-
+
+- The music driver
+- Generated module header file from the bytecode converter, which includes shared data such as instrument data, subsong pointers
+- Generated subsong sequence file(s) for each songs, from the bytecode converter
+
+Include the music driver `.asm` source using `.include` directive. The header file should also be included in the *same* bank as the music driver, but it doesn't matter as long as the header is *always* loaded in memory map when the music driver stuff is happening.
 
 ```x86asm
 .base $8000
@@ -74,7 +82,7 @@ Include the driver `.asm` source using `.include` directive. Don't forget to `.i
 .pad $A000,$FF
 ```
 
-In very first lines of `furEPSM.asm`, you can locate where furEPSM RAM variables live.
+In very first lines of `furEPSM.asm`, you can locate where furEPSM RAM variables live, and disable some features to save CPU cost and RAM usage.
 
 ```x86asm
 ; =========================================================================================
@@ -86,10 +94,15 @@ In very first lines of `furEPSM.asm`, you can locate where furEPSM RAM variables
 furEPSM_zp = $FB ; 5 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
+furEPSM_TEMPOCONSTANT = 3600 ; 3600 = NTSC, 3000 = PAL
+
+furEPSM_ENABLE_SSG = 1
+furEPSM_ENABLE_DELAYEDROW = 1
+
 ...
 ```
 
-The song data can be added with the same way as the driver. Find an empty bank for the track data, and just `.include` them.
+The song data can be added with the same way as the music driver. Find an empty bank for the track data, and just `.include` them.
 
 You don't have to label them here. The labels are already defined in each files already.
 
@@ -102,7 +115,7 @@ You don't have to label them here. The labels are already defined in each files 
 
 ### Playing a song
 
-Playing a song is as easy as pressing \[NEXT\] button in your MP3 player. Load **subsong number** in `A` register and call `furEPSM_play`.
+Playing a song is as easy as choosing song with your MP3 player. Load subsong number **starting from zero** in `A` register and call `furEPSM_play`.
 
 **THE SONG BANK** should be set before calling `furEPSM_play` and `furEPSM_update`. Otherwise the driver will read wrong data from other unrelated banks.
 
@@ -113,7 +126,7 @@ Playing a song is as easy as pressing \[NEXT\] button in your MP3 player. Load *
 		JSR furEPSM_play
 ```
 
-Call `furEPSM_update` in every frames to update sequence constantly, normally it's done as a part of NMI routine. Again, make sure **the song bank** is loaded already before calling `furEPSM_update`.
+Call `furEPSM_update` in every frames to update sequence constantly, normally it's done as a part of NMI routine. Again, make sure **the song bank** (and the header bank if it has seperate bank from the driver) is loaded already before calling `furEPSM_update`.
 
 It's recommended to call `furEPSM_play` or `furEPSM_update` only single time in a frame because of CPU usage. Best and clean way to do this is to make a RAM variable for "Track request" and do something like this:
 

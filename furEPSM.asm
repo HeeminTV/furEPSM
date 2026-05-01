@@ -698,10 +698,6 @@ ENDIF
 		INY
 		SEC
 		SBC #$80
-		PHA
-		ASL ; msb -> c
-		PLA
-		ROR ; bit 7 = c
 		STA furEPSM_effPitchOffset,X
 		JMP @effret
 		
