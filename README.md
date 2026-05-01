@@ -75,7 +75,7 @@ The three major files you should include are-
 
 Include the music driver `.asm` source using `.include` directive. The header file should also be included in the *same* bank as the music driver, but it doesn't matter as long as the header is *always* loaded in memory map when the music driver stuff is happening.
 
-```x86asm
+```nasm
 .base $8000
 		.include "furEPSM.asm"
 		.include "song_header.asm"
@@ -84,10 +84,10 @@ Include the music driver `.asm` source using `.include` directive. The header fi
 
 In very first lines of `furEPSM.asm`, you can locate where furEPSM RAM variables live, and disable some features to save CPU cost and RAM usage.
 
-```x86asm
+```nasm
 ; =========================================================================================
 ;
-; **USER SETTINGS**
+; **USER CONFIGURATION**
 ;
 ; =========================================================================================
 
@@ -106,7 +106,7 @@ The song data can be added with the same way as the music driver. Find an empty 
 
 You don't have to label them here. The labels are already defined in each files already.
 
-```x86asm
+```nasm
 .base $A000
 		; No labels required
 		.include "song_song00.asm"
@@ -119,7 +119,7 @@ Playing a song is as easy as choosing song with your MP3 player. Load subsong nu
 
 **THE SONG BANK** should be set before calling `furEPSM_play` and `furEPSM_update`. Otherwise the driver will read wrong data from other unrelated banks.
 
-```x86asm
+```nasm
 		LDA #SONG_BANK
 		STA MAPPER_PRG
 		LDA #SONG_TITLE
