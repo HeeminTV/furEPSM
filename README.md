@@ -1,4 +1,4 @@
-# MAIN UPDATES PAUSED UNTIL FURNACE FIXES TEXT EXPORT ISSUE
+# MAIN UPDATES ARE PAUSED UNTIL FURNACE FIXES TEXT EXPORT ISSUE
 
 # furEPSM
 
@@ -8,9 +8,9 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Resource usage
 
-- CPU cycles: Approx. 2190 cycles
+- CPU cycles: Approx. 2210 cycles
 - RAM usage: 143 bytes (+ 5 bytes on zero-page)
-- ROM usage: 2424 bytes
+- ROM usage: 2423 bytes
 
 ## Supported effects
 
@@ -19,7 +19,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - `0Bxx` - Jump to frame xx
 - `0D00` - Next frame
 - `0Fxx` - Set speed
-- `E5xx` - Set pitch offset (pseudo implementation)
+- `E5xx` - Set pitch offset
 - `ECxx` - Delayed note cut (priority has inaccuracy)
 - `EDxx` - Note delay (only one at once)
 - `FDxx` - Set tempo

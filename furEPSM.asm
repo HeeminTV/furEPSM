@@ -374,7 +374,7 @@ furEPSM_loadFrame:
 ; =========================================================================================
 
 furEPSM_calculateSpeed:
-		STX furEPSM_temp
+		STX furEPSM_temp ; save X
 
 		LDA furEPSM_tempo
 		STA furEPSM_tempoCnt+0
@@ -411,7 +411,7 @@ furEPSM_calculateSpeed:
 		BNE @divloop
 		STA furEPSM_tempoRem
 
-		LDX furEPSM_temp
+		LDX furEPSM_temp ; restore X
 		RTS
 		
 ; =========================================================================================
