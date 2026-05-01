@@ -8,9 +8,9 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Resource usage
 
-- CPU cycles: Approx. 2329 cycles
-- RAM usage: 150 bytes (+ 5 bytes on zero-page)
-- ROM usage: 2150 bytes
+- CPU cycles: Approx. 2190 cycles
+- RAM usage: 143 bytes (+ 5 bytes on zero-page)
+- ROM usage: 2424 bytes
 
 ## Supported effects
 

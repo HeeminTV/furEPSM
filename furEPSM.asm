@@ -68,8 +68,6 @@ ENDIF
 		furEPSM_fmPanChanged: .dsb 1
 
 		furEPSM_sChanVolEnvPos: .dsb furEPSM_ssgChan
-		furEPSM_sChanFreqLo: .dsb furEPSM_ssgChan ; final register out
-		furEPSM_sChanFreqHi: .dsb furEPSM_ssgChan
 		furEPSM_sChanVol: .dsb furEPSM_ssgChan
 ende
 
@@ -277,7 +275,6 @@ ENDIF
 		STA furEPSM_tempoAcc+1
 
 IF (furEPSM_ENABLE_SSG)
-		JSR furEPSM_updatePitchSSG
 		JSR furEPSM_updateVolSSG
 		JSR furEPSM_updateRegSSG
 ENDIF
@@ -1119,18 +1116,6 @@ furEPSM_mult:
 ; =========================================================================================
 
 IF (furEPSM_ENABLE_SSG)
-furEPSM_updatePitchSSG:
-		LDX #furEPSM_ssgChan-1
-@loop:
-		LDY furEPSM_chanBaseNote+6,X
-		LDA furEPSM_ssgPeriodTblLo,Y
-		STA furEPSM_sChanFreqLo,X
-		LDA furEPSM_ssgPeriodTblHi,Y
-		STA furEPSM_sChanFreqHi,X
-		DEX
-		BPL @loop
-		RTS
-		
 furEPSM_updateVolSSG:
 		LDX #furEPSM_ssgChan-1
 @loop:
@@ -1186,14 +1171,15 @@ furEPSM_updateVolSSG:
 furEPSM_updateRegSSG:
 		LDX #furEPSM_ssgChan-1
 @loop:
+		LDY furEPSM_chanBaseNote+6,X
 		LDA @00RegTbl,X
 		STA $401C
-		LDA furEPSM_sChanFreqLo,X
+		LDA furEPSM_ssgPeriodTblLo,Y
 		STA $401D
 
 		LDA @01RegTbl,X
 		STA $401C
-		LDA furEPSM_sChanFreqHi,X
+		LDA furEPSM_ssgPeriodTblHi,Y
 		STA $401D
 		
 		LDA @08RegTbl,X
