@@ -53,11 +53,11 @@ The bytecode converter accepts YM2608 (no CSM or exp 3CH) Furnace .txt export an
 
 Make sure to use "one speed" + "Virtual Tempo" scheme for "Speed" instead of "groove pattern" or "two (alternating) speeds" mode.
 
-![](images\opna.png)
+![](images/opna.png)
 
 The "Pitch linearity" in "Compatibility Flags" should be "None".
 
-![](images\pitch_linearity.png)
+![](images/pitch_linearity.png)
 
 The driver is particularly intended to use with bankswitched songs. You should write your own bankswitching logic. (a music driver will have no idea how your bankswitching system works) Just the update routine has to be called with the correct bank set right before.
 
