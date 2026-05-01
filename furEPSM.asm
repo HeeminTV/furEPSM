@@ -50,12 +50,14 @@ enum furEPSM_bss
 		furEPSM_chanInst: .dsb furEPSM_allChan ; bit 7 = instrument changed flag
 		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
 		
+; E5xx
+		furEPSM_effPitchOffset: .dsb furEPSM_allChan
+; ECxx
+		furEPSM_effDelayedCutTimer: .dsb furEPSM_allChan ; $00 = no cut
 ; EDxx
 		furEPSM_effDelayTimer: .dsb furEPSM_allChan ; $00 = no delay (obviously lol)
 		furEPSM_effDelayDelayedRowPtrLo: .dsb furEPSM_allChan
 		furEPSM_effDelayDelayedRowPtrHi: .dsb furEPSM_allChan
-; E5xx
-		furEPSM_effPitchOffset: .dsb furEPSM_allChan
 		
 		furEPSM_fmPanL: .dsb 1 ; xx123456
 		furEPSM_fmPanR: .dsb 1
@@ -126,8 +128,9 @@ furEPSM_play:
 @clear1:
 		LDA #0
 		STA furEPSM_chanBaseNote,X
-		STA furEPSM_effDelayTimer,X
 		STA furEPSM_effPitchOffset,X
+		STA furEPSM_effDelayedCutTimer,X
+		STA furEPSM_effDelayTimer,X
 
 		LDA #furEPSM_CHANSTAT_NOTECUT
 		STA furEPSM_chanStatus,X
@@ -166,9 +169,9 @@ furEPSM_update:
 		BMI @is_play
 		JMP furEPSM_silenceChannels
 @is_play:
-; Process delayed rows
+; Process delayed rows, delayed cuts
 		LDX #furEPSM_allChan-1
-@delayed_row_loop:
+@delayed_stuff_loop:
 		LDA furEPSM_effDelayTimer,X
 		BEQ @no_delay_row
 		DEC furEPSM_effDelayTimer,X
@@ -189,8 +192,15 @@ furEPSM_update:
 		PLA
 		STA furEPSM_chanPtrLo,X
 @no_delay_row:
+		LDA furEPSM_effDelayedCutTimer,X
+		BEQ @no_delayed_cut
+		DEC furEPSM_effDelayedCutTimer,X
+		BNE @no_delayed_cut
+		LDA #furEPSM_CHANSTAT_NOTECUT
+		STA furEPSM_chanStatus,X
+@no_delayed_cut:
 		DEX
-		BPL @delayed_row_loop
+		BPL @delayed_stuff_loop
 
 		LDA furEPSM_tempoAcc+1
 		BMI @do_seq_update
@@ -503,6 +513,7 @@ furEPSM_updateSeq:
 		.DL @eff_pitchoffset		; $8B
 		
 		.DL @eff_pan				; $8C
+		.DL @eff_delayedcut			; $8D
 
 @commandtbl_msb:
 		.DH @eff_inst 				; $80
@@ -521,6 +532,7 @@ furEPSM_updateSeq:
 		.DH @eff_pitchoffset		; $8B
 		
 		.DH @eff_pan				; $8C
+		.DH @eff_delayedcut			; $8D
 		
 ; ------------------------------------------------
 
@@ -700,6 +712,7 @@ furEPSM_updateSeq:
 		LDA furEPSM_fmPanR
 		AND furEPSM_panANDTbl,X
 		STA furEPSM_fmPanR
+
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		LSR
@@ -716,6 +729,14 @@ furEPSM_updateSeq:
 		ORA furEPSM_panORTbl,X
 		STA furEPSM_fmPanL
 @no_set_l:
+		JMP @effret
+		
+; ------------------------------------------------
+
+@eff_delayedcut:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_effDelayedCutTimer,X
 		JMP @effret
 
 ; =========================================================================================
