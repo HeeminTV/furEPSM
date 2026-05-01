@@ -130,7 +130,7 @@ Call `furEPSM_update` in every frames to update sequence constantly, normally it
 
 It's recommended to call `furEPSM_play` or `furEPSM_update` only single time in a frame because of CPU usage. Best and clean way to do this is to make a RAM variable for "Track request" and do something like this:
 
-```
+```nasm
 update_driver:
 		LDA #SONG_BANK
 		STA MAPPER_PRG
