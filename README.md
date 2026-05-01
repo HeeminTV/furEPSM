@@ -51,7 +51,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Usage
 
-The [bytecode converter](converter/furnace2asm.py) accepts [YM2608](https://github.com/tildearrow/furnace/blob/master/doc/7-systems/ym2608.md) (no CSM or exp 3CH) Furnace text export and generates one header file and track sequence data for each subsongs.
+The [bytecode converter](converter/furnace2asm.py) accepts [YM2608](https://github.com/tildearrow/furnace/blob/master/doc/7-systems/ym2608.md) (not CSM or exp 3CH, and the last ADPCM channel is unused) Furnace text export and generates one header file and track sequence data for each subsongs.
 
 ![](images/asmfiles.png)
 
@@ -126,7 +126,7 @@ Playing a song is as easy as choosing song with your MP3 player. Load subsong nu
 		JSR furEPSM_play
 ```
 
-Call `furEPSM_update` in every frames to update sequence constantly, normally it's done as a part of NMI routine. Again, make sure **the song bank** (and the header bank if it has seperate bank from the driver) is loaded already before calling `furEPSM_update`.
+Call `furEPSM_update` in every frames to update sequence constantly, normally it's done as a part of [NMI](https://www.nesdev.org/wiki/PPU_registers#Vblank_NMI) routine. Again, make sure **the song bank** (and the header bank if it has seperate bank from the driver) is loaded already before calling `furEPSM_update`.
 
 It's recommended to call `furEPSM_play` or `furEPSM_update` only single time in a frame because of CPU usage. Best and clean way to do this is to make a RAM variable for "Track request" and do something like this:
 
