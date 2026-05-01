@@ -36,8 +36,9 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - SSG macro release
 - Rhythm kit support
 
-## Non-goals
+## Non-goals (lowest priority)
 
+- Arpeggio effect
 - FM macros
 - SSG PCM streaming
 - 2A03 APU hijack

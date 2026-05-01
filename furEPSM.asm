@@ -8,7 +8,9 @@ furEPSM_zp = $FB ; 5 bytes zero page variable
 furEPSM_bss = $300 ; < 256 bytes of main variables
 
 furEPSM_TEMPOCONSTANT = 3600 ; 3600 = NTSC, 3000 = PAL
-furEPSM_DISABLESSG = 0 ; 1 to disable SSG channels
+
+furEPSM_ENABLE_SSG = 1
+furEPSM_ENABLE_DELAYEDROW = 1
 
 ; Only `furEPSM_play` and `furEPSM_update` are public subroutines, other subroutines are furEPSM internal ones.
 ; (You may want to call `furEPSM_silenceChannels` at RESET as initialization process but it's optional)	
@@ -22,7 +24,7 @@ enum furEPSM_zp
 ende
 
 furEPSM_fmChan = 6
-furEPSM_ssgChan = 3*(1-furEPSM_DISABLESSG)
+furEPSM_ssgChan = 3*furEPSM_ENABLE_SSG
 
 furEPSM_allChan = furEPSM_fmChan+furEPSM_ssgChan
 
@@ -43,21 +45,23 @@ enum furEPSM_bss
 
 		furEPSM_chanPtrLo: .dsb furEPSM_allChan
 		furEPSM_chanPtrHi: .dsb furEPSM_allChan
-		furEPSM_chanDefaultDelay: .dsb furEPSM_allChan
+		furEPSM_chanDefaultDelay: .dsb furEPSM_allChan ; delay reload
 		furEPSM_chanDelay: .dsb furEPSM_allChan
 		furEPSM_chanBaseNote: .dsb furEPSM_allChan ; $00-$7D = note
 		furEPSM_chanStatus: .dsb furEPSM_allChan
 		furEPSM_chanInst: .dsb furEPSM_allChan ; bit 7 = instrument changed flag
 		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
-		
+
 ; E5xx
 		furEPSM_effPitchOffset: .dsb furEPSM_allChan
 ; ECxx
 		furEPSM_effDelayedCutTimer: .dsb furEPSM_allChan ; $00 = no cut
 ; EDxx
+IF (furEPSM_ENABLE_DELAYEDROW)
 		furEPSM_effDelayTimer: .dsb furEPSM_allChan ; $00 = no delay (obviously lol)
 		furEPSM_effDelayDelayedRowPtrLo: .dsb furEPSM_allChan
 		furEPSM_effDelayDelayedRowPtrHi: .dsb furEPSM_allChan
+ENDIF
 		
 		furEPSM_fmPanL: .dsb 1 ; xx123456
 		furEPSM_fmPanR: .dsb 1
@@ -130,7 +134,9 @@ furEPSM_play:
 		STA furEPSM_chanBaseNote,X
 		STA furEPSM_effPitchOffset,X
 		STA furEPSM_effDelayedCutTimer,X
+IF (furEPSM_ENABLE_DELAYEDROW)
 		STA furEPSM_effDelayTimer,X
+ENDIF
 
 		LDA #furEPSM_CHANSTAT_NOTECUT
 		STA furEPSM_chanStatus,X
@@ -172,6 +178,7 @@ furEPSM_update:
 ; Process delayed rows, delayed cuts
 		LDX #furEPSM_allChan-1
 @delayed_stuff_loop:
+IF (furEPSM_ENABLE_DELAYEDROW)
 		LDA furEPSM_effDelayTimer,X
 		BEQ @no_delay_row
 		DEC furEPSM_effDelayTimer,X
@@ -192,6 +199,7 @@ furEPSM_update:
 		PLA
 		STA furEPSM_chanPtrLo,X
 @no_delay_row:
+ENDIF
 		LDA furEPSM_effDelayedCutTimer,X
 		BEQ @no_delayed_cut
 		DEC furEPSM_effDelayedCutTimer,X
@@ -268,7 +276,7 @@ furEPSM_update:
 		SBC furEPSM_tempoCnt+1
 		STA furEPSM_tempoAcc+1
 
-IF (!furEPSM_DISABLESSG)
+IF (furEPSM_ENABLE_SSG)
 		JSR furEPSM_updatePitchSSG
 		JSR furEPSM_updateVolSSG
 		JSR furEPSM_updateRegSSG
@@ -636,6 +644,7 @@ furEPSM_updateSeq:
 ; ------------------------------------------------
 
 @eff_rowdelay:
+IF (furEPSM_ENABLE_DELAYEDROW)
 		LDA (furEPSM_temp_ptr),Y
 		INY
 		STA furEPSM_effDelayTimer,X
@@ -683,6 +692,7 @@ furEPSM_updateSeq:
 		BCC @find_next_row ; otherwise read next command
 @found:
 		JMP @sequpdatedone
+ENDIF
 		
 ; ------------------------------------------------
 		
@@ -1108,7 +1118,7 @@ furEPSM_mult:
 		
 ; =========================================================================================
 
-IF (!furEPSM_DISABLESSG)
+IF (furEPSM_ENABLE_SSG)
 furEPSM_updatePitchSSG:
 		LDX #furEPSM_ssgChan-1
 @loop:
@@ -1145,9 +1155,20 @@ furEPSM_updateVolSSG:
 		LDA furEPSM_instptr+1,Y
 		STA furEPSM_temp_ptr+1
 		LDY furEPSM_sChanVolEnvPos,X
-		LDA (furEPSM_temp_ptr),Y
+
+		LDA furEPSM_chanVol+6,X
+		ASL
+		ASL
+		ASL
+		ASL
+		ORA (furEPSM_temp_ptr),Y
 		INY
+		STY furEPSM_temp
+		TAY
+		LDA furEPSM_ssgVolTbl,Y
 		STA furEPSM_sChanVol,X
+		LDY furEPSM_temp
+
 		LDA (furEPSM_temp_ptr),Y
 		CMP #16
 		BCC @skip_volenvloop
@@ -1217,7 +1238,7 @@ furEPSM_fnumTblLo:
 furEPSM_fnumTblHi:
 		.DH 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
 		
-IF (!furEPSM_DISABLESSG)
+IF (furEPSM_ENABLE_SSG)
 furEPSM_ssgPeriodTblLo:
 		.DL $11C1, $10C2, $0FD2, $0EEE, $0E18, $0D4D, $0C8E, $0BDA, $0B2F, $0A8F, $09F7, $0968
 		.DL $08E1, $0861, $07E9, $0777, $070C, $06A7, $0647, $05ED, $0598, $0547, $04FC, $04B4
@@ -1234,6 +1255,23 @@ furEPSM_ssgPeriodTblHi:
 		.DH $011C, $010C, $00FD, $00EF, $00E1, $00D5, $00C9, $00BE, $00B3, $00A9, $009F, $0096
 		.DH $008E, $0086, $007F, $0077, $0071, $006A, $0064, $005F, $0059, $0054, $0050, $004B
 		.DH $0047, $0043, $003F, $003C, $0038, $0035, $0032, $002F
+furEPSM_ssgVolTbl:      
+		.BYTE   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0
+		.BYTE   0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1
+		.BYTE   0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2
+		.BYTE   0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  3
+		.BYTE   0,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  3,  3,  3,  4
+		.BYTE   0,  1,  1,  1,  1,  1,  2,  2,  2,  3,  3,  3,  4,  4,  4,  5
+		.BYTE   0,  1,  1,  1,  1,  2,  2,  2,  3,  3,  4,  4,  4,  5,  5,  6
+		.BYTE   0,  1,  1,  1,  1,  2,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7
+		.BYTE   0,  1,  1,  1,  2,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7,  8
+		.BYTE   0,  1,  1,  1,  2,  3,  3,  4,  4,  5,  6,  6,  7,  7,  8,  9
+		.BYTE   0,  1,  1,  2,  2,  3,  4,  4,  5,  6,  6,  7,  8,  8,  9, 10
+		.BYTE   0,  1,  1,  2,  2,  3,  4,  5,  5,  6,  7,  8,  8,  9, 10, 11
+		.BYTE   0,  1,  1,  2,  3,  4,  4,  5,  6,  7,  8,  8,  9, 10, 11, 12
+		.BYTE   0,  1,  1,  2,  3,  4,  5,  6,  6,  7,  8,  9, 10, 11, 12, 13
+		.BYTE   0,  1,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14
+		.BYTE   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
 ENDIF
 
 ; =========================================================================================
