@@ -47,6 +47,12 @@ def parse_cell(cell_str):
             3 if eval_ == 0x00 else (((eval_&0xF0)!=0)<<1)|((eval_&0x0F)!=0)
             ))
             if etype == 'EC' and eval_ != 0: fx_list.append(('eff_delayedcut', eval_))
+            if etype == '01': fx_list.append(('eff_pitchslide',
+            eval_ if eval_ <= 0x7F else 0x7F
+            ))
+            if etype == '02': fx_list.append(('eff_pitchslide',
+            ((0 - eval_) & 0xFF) if eval_ <= 0x80 else 0x80
+            ))
             
     return note, fx_list
 
@@ -74,6 +80,7 @@ def encode_fx(fx, is_last):
     elif fx[0] == 'eff_pitchoffset':    return [base | 0x0B, fx[1]]
     elif fx[0] == 'eff_pan':            return [base | 0x0C, fx[1]]
     elif fx[0] == 'eff_delayedcut':     return [base | 0x0D, fx[1]]
+    elif fx[0] == 'eff_pitchslide':     return [base | 0x0E, fx[1]]
     return []
 
 def emit_row(note, fx_list):

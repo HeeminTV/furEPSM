@@ -52,6 +52,10 @@ enum furEPSM_bss
 		furEPSM_chanInst: .dsb furEPSM_allChan ; bit 7 = instrument changed flag
 		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
 
+; 01xx, 02xx
+		furEPSM_effPitchSlideAcc: .dsb furEPSM_allChan ; $00 = none
+		furEPSM_effPitchSlideResultLo: .dsb furEPSM_allChan
+		furEPSM_effPitchSlideResultHi: .dsb furEPSM_allChan
 ; E5xx
 		furEPSM_effPitchOffset: .dsb furEPSM_allChan
 ; ECxx
@@ -130,6 +134,9 @@ furEPSM_play:
 @clear1:
 		LDA #0
 		STA furEPSM_chanBaseNote,X
+		STA furEPSM_effPitchSlideAcc,X
+		STA furEPSM_effPitchSlideResultLo,X
+		STA furEPSM_effPitchSlideResultHi,X
 		STA furEPSM_effPitchOffset,X
 		STA furEPSM_effDelayedCutTimer,X
 IF (furEPSM_ENABLE_DELAYEDROW)
@@ -213,7 +220,7 @@ ENDIF
 		ORA furEPSM_tempoAcc+0
 		BNE @no_seq_update
 @do_seq_update:
-		BIT furEPSM_songFlag ; check if `eff_end` was occured in previous row
+		BIT furEPSM_songFlag ; check if `eff_end` was occured from previous row
 		BVC @no_stop_command
 		LDA furEPSM_songFlag
 		AND #%00111111
@@ -436,6 +443,9 @@ furEPSM_updateSeq:
 		BCC @misc
 		SBC #2 ; carry is set
 		STA furEPSM_chanBaseNote,X
+		LDA #0
+		STA furEPSM_effPitchSlideResultLo,X
+		STA furEPSM_effPitchSlideResultHi,X
 		LDA #furEPSM_CHANSTAT_NEWNOTE
 @misc:
 		STA furEPSM_chanStatus,X
@@ -519,6 +529,7 @@ furEPSM_updateSeq:
 		
 		.DL @eff_pan				; $8C
 		.DL @eff_delayedcut			; $8D
+		.DL @eff_pitchslide			; $8E
 
 @commandtbl_msb:
 		.DH @eff_inst 				; $80
@@ -538,7 +549,8 @@ furEPSM_updateSeq:
 		
 		.DH @eff_pan				; $8C
 		.DH @eff_delayedcut			; $8D
-		
+		.DH @eff_pitchslide			; $8E
+
 ; ------------------------------------------------
 
 @eff_inst:
@@ -741,6 +753,14 @@ ENDIF
 		INY
 		STA furEPSM_effDelayedCutTimer,X
 		JMP @effret
+		
+; ------------------------------------------------
+
+@eff_pitchslide:
+		LDA (furEPSM_temp_ptr),Y
+		INY
+		STA furEPSM_effPitchSlideAcc,X
+		JMP @effret
 
 ; =========================================================================================
 
@@ -811,13 +831,32 @@ furEPSM_updateRegFM:
 ; Update pitch
 		LDA @A4RegTbl,X
 		STA $401C,Y
-		STY furEPSM_temp_ptr+0 ; save Y
+		STY furEPSM_temp ; save Y
+		
+		LDA furEPSM_effPitchSlideAcc,X
+		BEQ @accskip
+		AND #$80
+		TAY
 
+		LDA furEPSM_effPitchSlideResultLo,X
+		CLC
+		ADC furEPSM_effPitchSlideAcc,X
+		STA furEPSM_effPitchSlideResultLo,X
+		LDA furEPSM_effPitchSlideResultHi,X
+		ADC @getmod-1,Y
+		STA furEPSM_effPitchSlideResultHi,X
+@accskip:
 		LDA furEPSM_effPitchOffset,X
 		AND #$80
 		TAY
-		LDA @getmod-1,Y
-		STA furEPSM_temp_ptr+1 ; top 3 bits of furEPSM_effPitchOffset
+
+		LDA furEPSM_effPitchSlideResultLo,X
+		CLC
+		ADC furEPSM_effPitchOffset,X
+		STA furEPSM_temp_ptr+0
+		LDA furEPSM_effPitchSlideResultHi,X
+		ADC @getmod-1,Y
+		STA furEPSM_temp_ptr+1
 
 		LDA furEPSM_chanBaseNote,X
 		CLC
@@ -834,23 +873,24 @@ furEPSM_updateRegFM:
 		TAY
 
 		LDA furEPSM_fnumTblLo,Y
-		ADC furEPSM_effPitchOffset,X ; carry is clear
-		STA furEPSM_temp_ptr2+1 ; fnum Low
+		ADC furEPSM_temp_ptr+0 ; carry is clear
+		STA furEPSM_temp_ptr+0 ; fnum Low
 		LDA furEPSM_fnumTblHi,Y
-		ADC furEPSM_temp_ptr+1 ; top 3 bits of furEPSM_effPitchOffset
+		ADC furEPSM_temp_ptr+1
 		AND #7
-		STA furEPSM_temp
+		STA furEPSM_temp_ptr+1
+
 		LDA furEPSM_temp_ptr2+0 ; block
 		ASL
 		ASL
 		ASL
-		ORA furEPSM_temp
-		LDY furEPSM_temp_ptr+0 ; restore Y
+		ORA furEPSM_temp_ptr+1
+		LDY furEPSM_temp ; restore Y
 		STA $401D,Y
 		
 		LDA @A0RegTbl,X
 		STA $401C,Y
-		LDA furEPSM_temp_ptr2+1 ; fnum Low
+		LDA furEPSM_temp_ptr+0 ; fnum Low
 		STA $401D,Y
 		
 		DEX
@@ -871,7 +911,7 @@ furEPSM_updateRegFM:
 		.BYTE $A4, $A5, $A6, $A4, $A5, $A6
 
 .org @getmod-1+128
-		.BYTE $07
+		.BYTE $FF
 
 ; =========================================================================================
 ;

@@ -14,6 +14,8 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Supported effects
 
+- `01xx` - ~~Pitch slide up (xx < 128)~~
+- `02xx` - ~~Pitch slide down (xx < 129)~~
 - `08xy` - Set panning
 - `80xx` - Set panning
 - `0Bxx` - Jump to frame xx
@@ -25,14 +27,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - `FDxx` - Set tempo
 - `FFxx` - Stop song
 
-## TODO
-
-- Implement effects in SSG
-- Add rhythm kit support
-- Add noise support for SSG
-- Add pitch bend effects (portamento, vibrato)
-
-## Major missing features
+## Note, major **missing features**
 
 - Effects in SSG channels
 - Grooves
@@ -40,6 +35,14 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - SSG macros except for volume
 - SSG macro release
 - Rhythm kit support
+- All pitch effects follow [FamiTracker](https://www.famitracker.com/)'s behavior, which means only F-Number is updated and is going to be clipped when it overflows or underflows.
+
+## TODO
+
+- Implement effects in SSG
+- Add rhythm kit support
+- Add noise support for SSG
+- Add pitch bend effects (portamento, vibrato)
 
 ## Non-goals (lowest priority)
 
@@ -115,7 +118,7 @@ You don't have to label them here. The labels are already defined in each files 
 
 ### Playing a song
 
-Playing a song is as easy as choosing song with your MP3 player. Load subsong number **starting from zero** in `A` register and call `furEPSM_play`.
+Playing a song is as easy as choosing a song with your MP3 player. Load subsong number **starting from zero** in `A` register and call `furEPSM_play`.
 
 **THE SONG BANK** should be set before calling `furEPSM_play` and `furEPSM_update`. Otherwise the driver will read wrong data from other unrelated banks.
 
