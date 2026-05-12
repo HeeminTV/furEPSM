@@ -1,5 +1,3 @@
-# MAIN UPDATES ARE PAUSED UNTIL FURNACE FIXES TEXT EXPORT ISSUE
-
 # furEPSM
 
 A ***WIP*** lightweight NES [EPSM](https://www.nesdev.org/wiki/Expansion_Port_Sound_Module) music driver for [Furnace](https://github.com/tildearrow/furnace)
