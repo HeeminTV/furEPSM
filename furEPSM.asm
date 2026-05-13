@@ -476,9 +476,11 @@ furEPSM_updateSeq:
 		CLC
 		ADC furEPSM_temp_ptr+0
 		STA furEPSM_chanPtrLo,X
+		BCC @skiphupdate
 		LDA furEPSM_chanPtrHi,X
 		ADC #0
 		STA furEPSM_chanPtrHi,X
+@skiphupdate:
 		RTS
 		
 ; ------------------------------------------------
