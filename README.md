@@ -39,6 +39,8 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - Add rhythm kit support
 - Add noise support for SSG
 - Add pitch bend effects (portamento, vibrato)
+- Add 2A03 support
+- Optimize data output
 
 ## Non-goals (lowest priority)
 
@@ -46,7 +48,6 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 - **Arpeggio** effect
 - FM macros
 - SSG PCM streaming
-- 2A03 APU hijack
 
 ## Usage
 

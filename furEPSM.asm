@@ -1171,13 +1171,11 @@ furEPSM_updateVolSSG:
 
 		LDA (furEPSM_temp_ptr),Y
 		CMP #16
-		BCC @skip_volenvloop
-		SBC #16 ; carry is set
+		BCC @skip_volenvloopset
+		SBC #16+1 ; carry is set
 		STA furEPSM_sChanVolEnvPos,X
-		BCS @volenvloopdone ; always
-@skip_volenvloop:
+@skip_volenvloopset:
 		INC furEPSM_sChanVolEnvPos,X
-@volenvloopdone:
 @skip:
 		DEX
 		BPL @loop
