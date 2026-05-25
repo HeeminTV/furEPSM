@@ -259,16 +259,16 @@ ENDIF
 		LDA furEPSM_tempoAcc+0
 		CLC
 		ADC furEPSM_tempoDec+0
-		STA furEPSM_temp_ptr+0
+		TAX
 		LDA furEPSM_tempoAcc+1
 		ADC furEPSM_tempoDec+1
-		STA furEPSM_temp_ptr+1
+		TAY
 
-		LDA furEPSM_temp_ptr+0
+		TXA
 		SEC
 		SBC furEPSM_tempoRem
 		STA furEPSM_tempoAcc+0
-		LDA furEPSM_temp_ptr+1
+		TYA
 		SBC #0
 		STA furEPSM_tempoAcc+1
 
@@ -882,16 +882,12 @@ furEPSM_updateRegFM:
 @loopend:
 		RTS
 
-@chanregoffsettbl:
-		.BYTE 0, 0, 0, 2, 2, 2
+@chanregoffsettbl: .BYTE 0, 0, 0, 2, 2, 2
 		
-@keyOnRegTbl:
-		.BYTE $F0, $F1, $F2, $F4, $F5, $F6
+@keyOnRegTbl: .BYTE $F0, $F1, $F2, $F4, $F5, $F6
 		
-@A0RegTbl:
-		.BYTE $A0, $A1, $A2, $A0, $A1, $A2	
-@A4RegTbl:
-		.BYTE $A4, $A5, $A6, $A4, $A5, $A6
+@A0RegTbl: .BYTE $A0, $A1, $A2, $A0, $A1, $A2	
+@A4RegTbl: .BYTE $A4, $A5, $A6, $A4, $A5, $A6
 
 .org @getmod-1+128
 		.BYTE $FF
@@ -1070,26 +1066,17 @@ furEPSM_updateTL:
 @op4only:
 		furEPSM_saveNewTL 4
 
-furEPSM_60RegTbl: ; RTS
-		.BYTE $60, $61, $62
-furEPSM_30RegTbl:
-		.BYTE $30, $31, $32
-furEPSM_40RegTbl:
-		.BYTE $40, $41, $42, $40, $41, $42
-furEPSM_50RegTbl:
-		.BYTE $50, $51, $52
-furEPSM_70RegTbl:
-		.BYTE $70, $71, $72
-furEPSM_80RegTbl:
-		.BYTE $80, $81, $82
-furEPSM_90RegTbl:
-		.BYTE $90, $91, $92
+furEPSM_60RegTbl: .BYTE $60, $61, $62 ; first byte works as RTS
+furEPSM_30RegTbl: .BYTE $30, $31, $32
+furEPSM_40RegTbl: .BYTE $40, $41, $42, $40, $41, $42
+furEPSM_50RegTbl: .BYTE $50, $51, $52
+furEPSM_70RegTbl: .BYTE $70, $71, $72
+furEPSM_80RegTbl: .BYTE $80, $81, $82
+furEPSM_90RegTbl: .BYTE $90, $91, $92
 		
-furEPSM_B0RegTbl:
-		.BYTE $B0, $B1, $B2
+furEPSM_B0RegTbl: .BYTE $B0, $B1, $B2
 		
-furEPSM_B4RegTbl:
-		.BYTE $B4, $B5, $B6, $B4, $B5, $B6
+furEPSM_B4RegTbl: .BYTE $B4, $B5, $B6, $B4, $B5, $B6
 		
 ; =========================================================================================
 ;
@@ -1204,12 +1191,9 @@ furEPSM_updateRegSSG:
 		BPL @loop
 		RTS
 
-@00RegTbl:
-		.BYTE $00, $02, $04
-@01RegTbl:
-		.BYTE $01, $03, $05
-@08RegTbl:
-		.BYTE $08, $09, $0A
+@00RegTbl: .BYTE $00, $02, $04
+@01RegTbl: .BYTE $01, $03, $05
+@08RegTbl: .BYTE $08, $09, $0A
 ENDIF
 
 ; =========================================================================================
@@ -1226,16 +1210,11 @@ furEPSM_loadInstPtr:
 
 ; =========================================================================================
 
-furEPSM_panANDTbl:
-		.BYTE %00011111, %00101111, %00110111, %00111011, %00111101, %00111110
-		
-furEPSM_panORTbl:
-		.BYTE %00100000, %00010000, %00001000, %00000100, %00000010, %00000001
+furEPSM_panANDTbl: .BYTE %00011111, %00101111, %00110111, %00111011, %00111101, %00111110
+furEPSM_panORTbl: .BYTE %00100000, %00010000, %00001000, %00000100, %00000010, %00000001
 
-furEPSM_fnumTblLo:
-		.DL 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
-furEPSM_fnumTblHi:
-		.DH 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
+furEPSM_fnumTblLo: .DL 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
+furEPSM_fnumTblHi: .DH 617, 654, 693, 734, 778, 824, 873, 925, 980, 1038, 1100, 1165
 		
 IF (furEPSM_ENABLE_SSG)
 furEPSM_ssgPeriodTblLo:
