@@ -12,8 +12,6 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 
 ## Supported effects
 
-- `01xx` - ~~Pitch slide up (xx < 128)~~
-- `02xx` - ~~Pitch slide down (xx < 129)~~
 - `08xy` - Set panning
 - `80xx` - Set panning
 - `0Bxx` - Jump to frame xx
@@ -45,7 +43,7 @@ Gone are the days you had to learn [FamiStudio](https://famistudio.org/) just to
 ## Non-goals (lowest priority)
 
 - Grooves
-- Arpeggio effect
+- **Arpeggio** effect
 - FM macros
 - SSG PCM streaming
 - 2A03 APU hijack

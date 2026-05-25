@@ -5,7 +5,7 @@
 ; =========================================================================================
 
 furEPSM_zp = $FB ; 5 bytes zero page variable
-furEPSM_bss = $300 ; < 256 bytes of main variables
+furEPSM_bss = $700 ; < 256 bytes of main variables
 
 furEPSM_TEMPOCONSTANT = 3600 ; 3600 = NTSC, 3000 = PAL
 
@@ -53,9 +53,9 @@ enum furEPSM_bss
 		furEPSM_chanVol: .dsb furEPSM_allChan ; bit 7 = volume changed flag
 
 ; 01xx, 02xx
-		furEPSM_effPitchSlideAcc: .dsb furEPSM_allChan ; $00 = none
-		furEPSM_effPitchSlideResultLo: .dsb furEPSM_allChan
-		furEPSM_effPitchSlideResultHi: .dsb furEPSM_allChan
+		; furEPSM_effPitchSlideAcc: .dsb furEPSM_allChan ; $00 = none
+		; furEPSM_effPitchSlideResultLo: .dsb furEPSM_allChan
+		; furEPSM_effPitchSlideResultHi: .dsb furEPSM_allChan
 ; E5xx
 		furEPSM_effPitchOffset: .dsb furEPSM_allChan
 ; ECxx
@@ -134,9 +134,9 @@ furEPSM_play:
 @clear1:
 		LDA #0
 		STA furEPSM_chanBaseNote,X
-		STA furEPSM_effPitchSlideAcc,X
-		STA furEPSM_effPitchSlideResultLo,X
-		STA furEPSM_effPitchSlideResultHi,X
+		; STA furEPSM_effPitchSlideAcc,X
+		; STA furEPSM_effPitchSlideResultLo,X
+		; STA furEPSM_effPitchSlideResultHi,X
 		STA furEPSM_effPitchOffset,X
 		STA furEPSM_effDelayedCutTimer,X
 IF (furEPSM_ENABLE_DELAYEDROW)
@@ -443,9 +443,6 @@ furEPSM_updateSeq:
 		BCC @misc
 		SBC #2 ; carry is set
 		STA furEPSM_chanBaseNote,X
-		LDA #0
-		STA furEPSM_effPitchSlideResultLo,X
-		STA furEPSM_effPitchSlideResultHi,X
 		LDA #furEPSM_CHANSTAT_NEWNOTE
 @misc:
 		STA furEPSM_chanStatus,X
@@ -761,7 +758,7 @@ ENDIF
 @eff_pitchslide:
 		LDA (furEPSM_temp_ptr),Y
 		INY
-		STA furEPSM_effPitchSlideAcc,X
+		; STA furEPSM_effPitchSlideAcc,X
 		JMP @effret
 
 ; =========================================================================================
@@ -834,33 +831,17 @@ furEPSM_updateRegFM:
 		LDA @A4RegTbl,X
 		STA $401C,Y
 		STY furEPSM_temp ; save Y
-		
-		LDA furEPSM_effPitchSlideAcc,X
-		BEQ @accskip
-		AND #$80
-		TAY
 
-		LDA furEPSM_effPitchSlideResultLo,X
-		CLC
-		ADC furEPSM_effPitchSlideAcc,X
-		STA furEPSM_effPitchSlideResultLo,X
-		LDA furEPSM_effPitchSlideResultHi,X
-		ADC @getmod-1,Y
-		STA furEPSM_effPitchSlideResultHi,X
-@accskip:
 		LDA furEPSM_effPitchOffset,X
 		AND #$80
 		TAY
 
-		LDA furEPSM_effPitchSlideResultLo,X
-		CLC
-		ADC furEPSM_effPitchOffset,X
+		LDA furEPSM_effPitchOffset,X
 		STA furEPSM_temp_ptr+0
-		LDA furEPSM_effPitchSlideResultHi,X
-		ADC @getmod-1,Y
+		LDA @getmod-1,Y
 		STA furEPSM_temp_ptr+1
 
-		LDA furEPSM_chanBaseNote,X
+		LDA furEPSM_chanBaseNote,X ; get base period
 		CLC
 		ADC #9
 		LDY #0
@@ -1119,35 +1100,33 @@ furEPSM_B4RegTbl:
 ; =========================================================================================
 		
 furEPSM_mult:
-		cpY #0              ;
-		beq @zero            ; a*0=0
-		deY                 ; decrement multiplicand to avoid the clc before 'adc multiplicand'
-		stY furEPSM_temp_ptr2+0    ;
-		lsr                 ; prepare first bit
-		sta furEPSM_temp_ptr2+1      ;
-		lda #0              ;
-		ldY #4              ;
+		CPY #0              ;
+		BEQ @zero            ; a*0=0
+		DEY                 ; decrement multiplicand to avoid the clc before 'adc multiplicand'
+		STY furEPSM_temp_ptr2+0    ;
+		LSR                 ; prepare first bit
+		STA furEPSM_temp_ptr2+1      ;
+		LDA #0              ;
+		LDY #4              ;
 @l0:
-		bcc @l1               ; no add
-		adc furEPSM_temp_ptr2+0    ;
+		BCC @l1               ; no add
+		ADC furEPSM_temp_ptr2+0    ;
 @l1:
-		ror                 ;
-		ror furEPSM_temp_ptr2+1      ;
-		bcc @l2               ; no add
-		adc furEPSM_temp_ptr2+0    ;
+		ROR                 ;
+		ROR furEPSM_temp_ptr2+1      ;
+		BCC @l2               ; no add
+		ADC furEPSM_temp_ptr2+0    ;
 @l2:
-		ror                 ;
-		ror furEPSM_temp_ptr2+1      ;
-		deY                 ;
-		bne @l0               ;
-		; TAY
-		; ldA furEPSM_temp_ptr2+1      ;
-		rts                 ;
+		ROR                 ;
+		ROR furEPSM_temp_ptr2+1      ;
+		DEY                 ;
+		BNE @l0               ;
+		RTS               ;
 
 @zero:
 		STY furEPSM_temp_ptr2+1
-		tYa                 ; a = 0
-		rts                 ;
+		TYA
+		RTS
 		
 ; =========================================================================================
 
